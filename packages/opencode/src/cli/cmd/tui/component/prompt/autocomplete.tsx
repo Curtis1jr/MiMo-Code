@@ -368,10 +368,13 @@ export function Autocomplete(props: {
       )
   })
 
-  const [skillMap] = createResource(async () => {
-    const result = await sdk.client.app.skills()
-    return new Map((result.data ?? []).map((s) => [s.name, s]))
-  })
+  const [skillMap] = createResource(
+    () => store.visible === "/" || undefined,
+    async () => {
+      const result = await sdk.client.app.skills()
+      return new Map((result.data ?? []).map((s) => [s.name, s]))
+    },
+  )
 
   const commands = createMemo((): AutocompleteOption[] => {
     const results: AutocompleteOption[] = [...command.slashes()]
