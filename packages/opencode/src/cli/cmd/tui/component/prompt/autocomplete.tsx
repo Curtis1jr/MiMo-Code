@@ -488,21 +488,7 @@ export function Autocomplete(props: {
   function select() {
     const selected = options()[store.selected]
     if (!selected) return
-    // Clear the trigger range so onSelect works on a clean slate.
-    // Server command onSelect re-inserts at the same position; client-side
-    // slashes just fire their action with the trigger text removed.
-    if (store.visible === "/") {
-      const input = props.input()
-      const currentCursorOffset = input.cursorOffset
-      input.cursorOffset = store.index
-      const startCursor = input.logicalCursor
-      input.cursorOffset = currentCursorOffset
-      const endCursor = input.logicalCursor
-      input.deleteRange(startCursor.row, startCursor.col, endCursor.row, endCursor.col)
-      props.setPrompt((draft) => {
-        draft.input = input.plainText
-      })
-    }
+    clearTriggerRange()
     hide()
     selected.onSelect?.()
   }
@@ -539,6 +525,20 @@ export function Autocomplete(props: {
   function hide() {
     command.keybinds(true)
     setStore("visible", false)
+  }
+
+  function clearTriggerRange() {
+    if (store.visible !== "/") return
+    const input = props.input()
+    const currentCursorOffset = input.cursorOffset
+    input.cursorOffset = store.index
+    const startCursor = input.logicalCursor
+    input.cursorOffset = currentCursorOffset
+    const endCursor = input.logicalCursor
+    input.deleteRange(startCursor.row, startCursor.col, endCursor.row, endCursor.col)
+    props.setPrompt((draft) => {
+      draft.input = input.plainText
+    })
   }
 
   onMount(() => {
@@ -588,6 +588,7 @@ export function Autocomplete(props: {
             return
           }
           if (name === "escape") {
+            clearTriggerRange()
             hide()
             e.preventDefault()
             return
