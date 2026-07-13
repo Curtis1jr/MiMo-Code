@@ -397,6 +397,8 @@ export function Autocomplete(props: {
           const needsSpace = charAfterCursor(props.value, input.cursorOffset) !== " "
           const append = "/" + serverCommand.name + (needsSpace ? " " : "")
 
+          // clearTriggerRange() already deleted the token and set cursor to store.index,
+          // so start === end here (no-op delete). Kept for robustness if called from other paths.
           const currentCursorOffset = input.cursorOffset
           input.cursorOffset = store.index
           const startCursor = input.logicalCursor
@@ -562,9 +564,7 @@ export function Autocomplete(props: {
             // Typed text before the trigger
             props.input().cursorOffset <= store.index ||
             // There is a space between the trigger and the cursor
-            props.input().getTextRange(store.index, props.input().cursorOffset).match(/\s/) ||
-            // Position-0 slash: dismiss when input has command + args (e.g. "/init foo")
-            (store.visible === "/" && store.index === 0 && value.match(/^\S+\s+\S+\s*$/))
+            props.input().getTextRange(store.index, props.input().cursorOffset).match(/\s/)
           ) {
             hide()
           }
