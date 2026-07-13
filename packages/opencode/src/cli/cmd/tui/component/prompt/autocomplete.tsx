@@ -377,6 +377,7 @@ export function Autocomplete(props: {
       if (serverCommand.source === "skill" && !isCompose && serverCommand.name.startsWith("compose:")) continue
       const label = serverCommand.source === "mcp" ? ":mcp" : ""
       const desc = serverCommand.source === "skill"
+        // Command schema lacks `bundled`; pass true to attempt i18n lookup — falls back to raw description for non-bundled skills
         ? skillDescription(lang.t, serverCommand.name, serverCommand.description, true)
         : slashCommandDescription(lang.t, serverCommand.name, serverCommand.description)
       results.push({
