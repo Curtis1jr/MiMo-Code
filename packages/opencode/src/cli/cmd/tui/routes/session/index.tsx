@@ -1161,7 +1161,8 @@ export function Session() {
     on(
       () => currentAgentID(),
       (agentID, prevAgentID) => {
-        if (prevAgentID && scroll && !scroll.isDestroyed) {
+        if (!prevAgentID) return
+        if (scroll && !scroll.isDestroyed) {
           if (scroll.scrollTop >= scroll.scrollHeight - 1) scrollByAgent.delete(prevAgentID)
           else scrollByAgent.set(prevAgentID, scroll.scrollTop)
         }
@@ -1178,7 +1179,6 @@ export function Session() {
         }
         toBottom()
       },
-      { defer: true },
     ),
   )
 
