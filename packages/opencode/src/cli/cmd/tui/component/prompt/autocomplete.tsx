@@ -368,17 +368,23 @@ export function Autocomplete(props: {
       )
   })
 
+  const [skillMap] = createResource(async () => {
+    const result = await sdk.client.app.skills()
+    return new Map((result.data ?? []).map((s) => [s.name, s]))
+  })
+
   const commands = createMemo((): AutocompleteOption[] => {
     const results: AutocompleteOption[] = [...command.slashes()]
 
     const isCompose = local.agent.current()?.name === "compose"
+    const skills = skillMap()
     for (const serverCommand of sync.data.command) {
       if (serverCommand.source === "skill" && Flag.MIMOCODE_DISABLE_SLASH_SKILLS) continue
       if (serverCommand.source === "skill" && !isCompose && serverCommand.name.startsWith("compose:")) continue
       const label = serverCommand.source === "mcp" ? ":mcp" : ""
-      const desc = serverCommand.source === "skill"
-        // Command schema lacks `bundled`; pass true to attempt i18n lookup — falls back to raw description for non-bundled skills
-        ? skillDescription(lang.t, serverCommand.name, serverCommand.description, true)
+      const info = serverCommand.source === "skill" ? skills?.get(serverCommand.name) : undefined
+      const desc = info
+        ? skillDescription(lang.t, info.name, info.description, info.bundled)
         : slashCommandDescription(lang.t, serverCommand.name, serverCommand.description)
       results.push({
         display: "/" + serverCommand.name + label,
