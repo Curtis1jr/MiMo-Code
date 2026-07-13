@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { parseActorNotification, renderActorNotification } from "../../src/inbox/render"
 
 describe("parseActorNotification", () => {
-  test("parses a completed notification with reported status + summary", () => {
+  test("parses a success notification with reported status + summary", () => {
     const text = renderActorNotification({
       actorID: "explore-1",
       description: "Find error recovery",
@@ -12,13 +12,13 @@ describe("parseActorNotification", () => {
       result: "full body here",
     })
     expect(parseActorNotification(text)).toEqual({
-      status: "completed",
+      status: "success",
       description: "Find error recovery",
       summary: "Located 3 recovery sites",
     })
   })
 
-  test("completed without a summary falls back to the Result line", () => {
+  test("success without a summary falls back to the Result line", () => {
     const text = renderActorNotification({
       actorID: "explore-2",
       description: "Scan repo",
@@ -27,13 +27,13 @@ describe("parseActorNotification", () => {
       result: "42 files scanned",
     })
     expect(parseActorNotification(text)).toEqual({
-      status: "completed",
+      status: "success",
       description: "Scan repo",
       summary: "42 files scanned",
     })
   })
 
-  test("completed without a summary does not mistake an embedded Summary: line in the Result body", () => {
+  test("success without a summary does not mistake an embedded Summary: line in the Result body", () => {
     const text = renderActorNotification({
       actorID: "explore-3",
       description: "Draft report",
@@ -42,13 +42,82 @@ describe("parseActorNotification", () => {
       result: "Here is the outline:\nSummary: this is inside the result body\nmore text",
     })
     expect(parseActorNotification(text)).toEqual({
-      status: "completed",
+      status: "success",
       description: "Draft report",
       summary: "Here is the outline:",
     })
   })
 
-  test("parses a failed notification with the Error line as summary", () => {
+  test("a partial task outcome does not imply completion", () => {
+    const text = renderActorNotification({
+      actorID: "general-4",
+      description: "Migrate module",
+      status: "completed",
+      reportedStatus: "partial",
+      reportedSummary: "2 of 3 files migrated",
+      result: "details",
+    })
+    expect(text).toContain("finished with status: partial")
+    expect(text).not.toContain("completed")
+    expect(parseActorNotification(text)).toEqual({
+      status: "partial",
+      description: "Migrate module",
+      summary: "2 of 3 files migrated",
+    })
+  })
+
+  test("a self-reported failed task outcome does not say completed", () => {
+    const text = renderActorNotification({
+      actorID: "general-5",
+      description: "Fix flaky test",
+      status: "completed",
+      reportedStatus: "failed",
+      result: "could not reproduce",
+    })
+    expect(text).toContain("finished with status: failed")
+    expect(text).not.toContain("completed")
+    expect(parseActorNotification(text)).toEqual({
+      status: "failed",
+      description: "Fix flaky test",
+      summary: "could not reproduce",
+    })
+  })
+
+  test("a blocked task outcome maps to blocked", () => {
+    const text = renderActorNotification({
+      actorID: "general-6",
+      description: "Deploy service",
+      status: "completed",
+      reportedStatus: "blocked",
+      reportedSummary: "waiting on credentials",
+      result: "details",
+    })
+    expect(text).toContain("finished with status: blocked")
+    expect(parseActorNotification(text)).toEqual({
+      status: "blocked",
+      description: "Deploy service",
+      summary: "waiting on credentials",
+    })
+  })
+
+  test("no reported status → neutral 'finished', no misleading Status line", () => {
+    const text = renderActorNotification({
+      actorID: "explore-7",
+      description: "Investigate crash",
+      status: "completed",
+      result: "looked around the logger",
+    })
+    expect(text).toContain(") finished.")
+    expect(text).not.toContain("completed")
+    expect(text).not.toContain("Status: unknown")
+    expect(parseActorNotification(text)).toEqual({
+      status: "finished",
+      description: "Investigate crash",
+      summary: "looked around the logger",
+    })
+  })
+
+  test("parses a failed (process) notification with the Error line as summary", () => {
     const text = renderActorNotification({
       actorID: "general-9",
       description: "Type checker review",

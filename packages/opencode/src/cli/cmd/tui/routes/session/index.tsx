@@ -1498,8 +1498,11 @@ function UserMessage(props: {
           // structured rows rather than raw <actor-notification> XML.
           const style = createMemo(() => {
             const s = note().status
-            if (s === "completed") return { icon: "✓", fg: theme.success, label: "completed" }
+            if (s === "success") return { icon: "✓", fg: theme.success, label: "completed" }
+            if (s === "partial") return { icon: "◐", fg: theme.warning, label: "partial" }
             if (s === "failed") return { icon: "✗", fg: theme.error, label: "failed" }
+            if (s === "blocked") return { icon: "⊘", fg: theme.error, label: "blocked" }
+            if (s === "finished") return { icon: "⊙", fg: theme.textMuted, label: "finished" }
             if (s === "stalled") return { icon: "⏳", fg: theme.warning, label: "stalled" }
             return { icon: "⊜", fg: theme.textMuted, label: "cancelled" }
           })
