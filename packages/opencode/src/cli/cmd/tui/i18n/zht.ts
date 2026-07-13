@@ -199,6 +199,7 @@ export const dict = {
   "tui.skill.html-to-video-pipeline.description": "短影片神器 - 利用 HTML 製作短影片",
   "tui.skill.arxiv.description": "搜尋、引用、下載與追蹤 arXiv 論文",
   "tui.skill.skill-creator.description": "建立、審查與改進 Agent 技能",
+  "tui.skill.drive-mimo.description": "以程式化方式驅動另一個 MiMoCode 程序——無頭 JSON 事件或透過 tmux 互動",
   "tui.skill.research-paper-writing.description": "撰寫、潤色學術論文，並以審稿人視角提前把關",
   "tui.skill.design-blueprint.description": "先出設計藍圖（DESIGN.md + 決策軌跡）再動手做視覺",
   "tui.skill.super-research.description": "自主研究——實驗迴圈、主題調研、量化分析、對比評測、根因排查、消融實驗、複現論文、寫論文",

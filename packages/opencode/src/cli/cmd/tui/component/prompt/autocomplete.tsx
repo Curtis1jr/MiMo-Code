@@ -14,6 +14,7 @@ import { SplitBorder } from "@tui/component/border"
 import { useCommandDialog } from "@tui/component/dialog-command"
 import { useLanguage } from "@tui/context/language"
 import { slashCommandDescription } from "@tui/i18n/slash-command"
+import { skillDescription } from "@tui/i18n/skill"
 import { useTerminalDimensions } from "@opentui/solid"
 import { Locale } from "@/util"
 import { Flag } from "@/flag/flag"
@@ -375,9 +376,12 @@ export function Autocomplete(props: {
       if (serverCommand.source === "skill" && Flag.MIMOCODE_DISABLE_SLASH_SKILLS) continue
       if (serverCommand.source === "skill" && !isCompose && serverCommand.name.startsWith("compose:")) continue
       const label = serverCommand.source === "mcp" ? ":mcp" : ""
+      const desc = serverCommand.source === "skill"
+        ? skillDescription(lang.t, serverCommand.name, serverCommand.description, true)
+        : slashCommandDescription(lang.t, serverCommand.name, serverCommand.description)
       results.push({
         display: "/" + serverCommand.name + label,
-        description: slashCommandDescription(lang.t, serverCommand.name, serverCommand.description),
+        description: desc,
         onSelect: () => {
           const input = props.input()
           const needsSpace = charAfterCursor(props.value, input.cursorOffset) !== " "
@@ -511,14 +515,15 @@ export function Autocomplete(props: {
   }
 
   function hide() {
-    const text = props.input().plainText
-    if (store.visible === "/" && !text.endsWith(" ") && text.startsWith("/")) {
-      const cursor = props.input().logicalCursor
-      props.input().deleteRange(0, 0, cursor.row, cursor.col)
-      // Sync the prompt store immediately since onContentChange is async
-      props.setPrompt((draft) => {
-        draft.input = props.input().plainText
-      })
+    if (store.visible === "/" && store.index === 0) {
+      const text = props.input().plainText
+      if (!text.endsWith(" ") && text.startsWith("/")) {
+        const cursor = props.input().logicalCursor
+        props.input().deleteRange(0, 0, cursor.row, cursor.col)
+        props.setPrompt((draft) => {
+          draft.input = props.input().plainText
+        })
+      }
     }
     command.keybinds(true)
     setStore("visible", false)
@@ -536,8 +541,8 @@ export function Autocomplete(props: {
             props.input().cursorOffset <= store.index ||
             // There is a space between the trigger and the cursor
             props.input().getTextRange(store.index, props.input().cursorOffset).match(/\s/) ||
-            // "/<command>" is not the sole content
-            (store.visible === "/" && value.match(/^\S+\s+\S+\s*$/))
+            // Position-0 slash: dismiss when input has command + args (e.g. "/init foo")
+            (store.visible === "/" && store.index === 0 && value.match(/^\S+\s+\S+\s*$/))
           ) {
             hide()
           }

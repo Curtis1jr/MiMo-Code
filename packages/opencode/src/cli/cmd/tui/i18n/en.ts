@@ -210,6 +210,7 @@ export const dict: Record<string, string> = {
   "tui.skill.html-to-video-pipeline.description": "Short-video magic — make short videos with HTML",
   "tui.skill.arxiv.description": "Search, cite, download, and track arXiv papers",
   "tui.skill.skill-creator.description": "Create, review, and improve agent skills",
+  "tui.skill.drive-mimo.description": "Programmatically drive another MiMoCode process — headless JSON events or interactive TUI via tmux",
   "tui.skill.research-paper-writing.description": "Draft, polish, and reviewer-style critique for academic papers",
   "tui.skill.design-blueprint.description":
     "Produce a design blueprint (DESIGN.md + Decision Trace) before mocking up any visual",
