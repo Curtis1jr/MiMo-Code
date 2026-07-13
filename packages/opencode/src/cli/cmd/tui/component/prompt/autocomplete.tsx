@@ -21,7 +21,7 @@ import { Flag } from "@/flag/flag"
 import type { PromptInfo } from "./history"
 import { useFrecency } from "./frecency"
 import { detectTrigger } from "./autocomplete-detect"
-import { charAfterCursor } from "./offset"
+import { charAfterCursor, widthToStringIndex, stringIndexToWidth } from "./offset"
 
 function removeLineRange(input: string) {
   const hashIndex = input.lastIndexOf("#")
@@ -530,12 +530,19 @@ export function Autocomplete(props: {
   function clearTriggerRange() {
     if (store.visible !== "/") return
     const input = props.input()
-    const currentCursorOffset = input.cursorOffset
+    const text = input.plainText
+    // Find end of the slash token (next whitespace or end of text)
+    const startIdx = widthToStringIndex(text, store.index)
+    let endIdx = startIdx
+    while (endIdx < text.length && !/\s/.test(text[endIdx]!)) endIdx++
+    const endWidth = stringIndexToWidth(text, endIdx)
+
     input.cursorOffset = store.index
     const startCursor = input.logicalCursor
-    input.cursorOffset = currentCursorOffset
+    input.cursorOffset = endWidth
     const endCursor = input.logicalCursor
     input.deleteRange(startCursor.row, startCursor.col, endCursor.row, endCursor.col)
+    input.cursorOffset = store.index
     props.setPrompt((draft) => {
       draft.input = input.plainText
     })
