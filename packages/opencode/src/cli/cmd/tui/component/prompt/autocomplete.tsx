@@ -481,6 +481,21 @@ export function Autocomplete(props: {
   function select() {
     const selected = options()[store.selected]
     if (!selected) return
+    // Clear the trigger range so onSelect works on a clean slate.
+    // Server command onSelect re-inserts at the same position; client-side
+    // slashes just fire their action with the trigger text removed.
+    if (store.visible === "/") {
+      const input = props.input()
+      const currentCursorOffset = input.cursorOffset
+      input.cursorOffset = store.index
+      const startCursor = input.logicalCursor
+      input.cursorOffset = currentCursorOffset
+      const endCursor = input.logicalCursor
+      input.deleteRange(startCursor.row, startCursor.col, endCursor.row, endCursor.col)
+      props.setPrompt((draft) => {
+        draft.input = input.plainText
+      })
+    }
     hide()
     selected.onSelect?.()
   }
@@ -515,16 +530,6 @@ export function Autocomplete(props: {
   }
 
   function hide() {
-    if (store.visible === "/" && store.index === 0) {
-      const text = props.input().plainText
-      if (!text.endsWith(" ") && text.startsWith("/")) {
-        const cursor = props.input().logicalCursor
-        props.input().deleteRange(0, 0, cursor.row, cursor.col)
-        props.setPrompt((draft) => {
-          draft.input = props.input().plainText
-        })
-      }
-    }
     command.keybinds(true)
     setStore("visible", false)
   }
