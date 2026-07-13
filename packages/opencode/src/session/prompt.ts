@@ -1944,11 +1944,30 @@ NOTE: At any point in time through this workflow you should feel free to ask the
       // 50 min) so a still-active in-flight request is never falsely
       // swept while its retry chain is making progress.
       const ORPHAN_AGE_MS = 3_600_000
-      for (const m of msgs) {
+      // Index of the last assistant message in send order. A TRAILING incomplete
+      // assistant (the conversation currently ends on an assistant that never
+      // stamped `time.completed`) is definitionally abandoned: nothing will ever
+      // complete it, and sending it as-is makes the request end with an assistant
+      // turn — which providers like the Bedrock Converse API reject with a
+      // non-retryable 400 ("must end with a user message"). Sweep such a trailing
+      // orphan IMMEDIATELY, regardless of age, so `toModelMessages` skips it and
+      // the request ends on a user/tool turn. Never touches a COMPLETED reply
+      // (guarded by the `time.completed` check below); a non-trailing incomplete
+      // assistant keeps the age gate so an in-flight retry chain isn't swept.
+      let lastAssistantIndex = -1
+      for (let i = msgs.length - 1; i >= 0; i--) {
+        if (msgs[i].info.role === "assistant") {
+          lastAssistantIndex = i
+          break
+        }
+      }
+      for (let idx = 0; idx < msgs.length; idx++) {
+        const m = msgs[idx]
         if (m.info.role !== "assistant") continue
         if (m.info.time?.completed) continue
+        const isTrailing = idx === lastAssistantIndex && idx === msgs.length - 1
         const created = m.info.time?.created ?? 0
-        if (now - created < ORPHAN_AGE_MS) continue
+        if (!isTrailing && now - created < ORPHAN_AGE_MS) continue
         m.info.time = { ...m.info.time, completed: now }
         m.info.error =
           m.info.error ??

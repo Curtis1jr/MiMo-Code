@@ -75,7 +75,7 @@ describe("sweepOrphanAssistants", () => {
     ),
   )
 
-  it.live("leaves a recent (under 60s) incomplete assistant message untouched", () =>
+  it.live("leaves a recent (under 60s) incomplete NON-TRAILING assistant untouched", () =>
     provideTmpdirInstance((dir) =>
       Effect.gen(function* () {
         const sessions = yield* Session.Service
@@ -95,6 +95,18 @@ describe("sweepOrphanAssistants", () => {
         const assistant = makeAssistant(session.id, userMsg.id, dir, { created: now - 1_800_000 })
         yield* sessions.updateMessage(assistant)
 
+        // A trailing user turn after the incomplete assistant makes it NON-trailing,
+        // so the age gate still protects it (it may be a mid-conversation in-flight
+        // retry chain, not an abandoned prefill).
+        yield* sessions.updateMessage({
+          id: MessageID.ascending(),
+          role: "user",
+          sessionID: session.id,
+          agent: "default",
+          model: { providerID: ProviderID.make("test"), modelID: ModelID.make("test-model") },
+          time: { created: now - 1_000 },
+        })
+
         yield* svc.sweepOrphanAssistants(session.id)
 
         const after = yield* sessions.messages({ sessionID: session.id })
@@ -103,6 +115,41 @@ describe("sweepOrphanAssistants", () => {
         const info = updated!.info as MessageV2.Assistant
         expect(info.time.completed).toBeUndefined()
         expect(info.error).toBeUndefined()
+      }),
+    ),
+  )
+
+  it.live("sweeps a recent (under 60s) incomplete TRAILING assistant regardless of age", () =>
+    provideTmpdirInstance((dir) =>
+      Effect.gen(function* () {
+        const sessions = yield* Session.Service
+        const svc = yield* SessionPrompt.Service
+        const session = yield* sessions.create({})
+
+        const userMsg = yield* sessions.updateMessage({
+          id: MessageID.ascending(),
+          role: "user",
+          sessionID: session.id,
+          agent: "default",
+          model: { providerID: ProviderID.make("test"), modelID: ModelID.make("test-model") },
+          time: { created: Date.now() - 1_900_000 },
+        })
+
+        // A fresh (well under the 1h gate) incomplete assistant that is the LAST
+        // message: a trailing prefill that would make the next request end on an
+        // assistant turn and 400 on Bedrock. It must be swept regardless of age.
+        const now = Date.now()
+        const assistant = makeAssistant(session.id, userMsg.id, dir, { created: now - 1_000 })
+        yield* sessions.updateMessage(assistant)
+
+        yield* svc.sweepOrphanAssistants(session.id)
+
+        const after = yield* sessions.messages({ sessionID: session.id })
+        const updated = after.find((m) => m.info.id === assistant.id)
+        expect(updated).toBeDefined()
+        const info = updated!.info as MessageV2.Assistant
+        expect(info.time.completed).toBeDefined()
+        expect(info.error).toBeDefined()
       }),
     ),
   )
