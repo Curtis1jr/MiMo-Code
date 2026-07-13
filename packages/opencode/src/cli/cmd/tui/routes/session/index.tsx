@@ -281,6 +281,7 @@ export function Session() {
 
   let seeded = false
   let scroll: ScrollBoxRenderable
+  const scrollByAgent = new Map<string, number>()
   let prompt: PromptRef | undefined
   const bind = (r: PromptRef | undefined) => {
     prompt = r
@@ -1151,6 +1152,27 @@ export function Session() {
 
   // snap to bottom when session changes
   createEffect(on(() => route.sessionID, toBottom))
+
+  // save/restore scroll position when switching between agent views
+  createEffect(
+    on(
+      () => currentAgentID(),
+      (agentID, prevAgentID) => {
+        if (prevAgentID && scroll && !scroll.isDestroyed) {
+          scrollByAgent.set(prevAgentID, scroll.scrollTop)
+        }
+        const saved = scrollByAgent.get(agentID)
+        if (saved !== undefined) {
+          setTimeout(() => {
+            if (!scroll || scroll.isDestroyed) return
+            scroll.scrollTo(Math.min(saved, scroll.scrollHeight))
+          }, 50)
+          return
+        }
+        toBottom()
+      },
+    ),
+  )
 
   return (
     <context.Provider
