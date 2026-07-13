@@ -205,7 +205,7 @@ export function Session() {
     if (evt.type !== "scroll") return
     setScrolling(true)
     if (scrollHideTimer) clearTimeout(scrollHideTimer)
-    scrollHideTimer = setTimeout(() => setScrolling(false), 1000)
+    scrollHideTimer = setTimeout(() => setScrolling(false), 2500)
   }
   onCleanup(() => {
     if (scrollHideTimer) clearTimeout(scrollHideTimer)
@@ -1151,7 +1151,7 @@ export function Session() {
   })
 
   // snap to bottom when session changes
-  createEffect(on(() => route.sessionID, toBottom))
+  createEffect(on(() => route.sessionID, () => { scrollByAgent.clear(); toBottom() }))
 
   // save/restore scroll position when switching between agent views
   createEffect(
@@ -1159,18 +1159,23 @@ export function Session() {
       () => currentAgentID(),
       (agentID, prevAgentID) => {
         if (prevAgentID && scroll && !scroll.isDestroyed) {
-          scrollByAgent.set(prevAgentID, scroll.scrollTop)
+          if (scroll.scrollTop >= scroll.scrollHeight - 1) scrollByAgent.delete(prevAgentID)
+          else scrollByAgent.set(prevAgentID, scroll.scrollTop)
         }
         const saved = scrollByAgent.get(agentID)
         if (saved !== undefined) {
-          setTimeout(() => {
+          let tries = 0
+          const restore = () => {
             if (!scroll || scroll.isDestroyed) return
             scroll.scrollTo(Math.min(saved, scroll.scrollHeight))
-          }, 50)
+            if (++tries < 5 && scroll.scrollTop < saved - 1) setTimeout(restore, 60)
+          }
+          setTimeout(restore, 50)
           return
         }
         toBottom()
       },
+      { defer: true },
     ),
   )
 
