@@ -507,6 +507,11 @@ export function Prompt(props: PromptProps) {
     ),
   )
 
+  // Derive sticky mode from whether session has messages
+  createEffect(() => {
+    local.agent.setSessionHasMessages(!!lastUserMessage())
+  })
+
   // Initialize agent/model/variant from last user message when session changes
   let syncedSessionID: string | undefined
   createEffect(() => {
@@ -514,16 +519,8 @@ export function Prompt(props: PromptProps) {
     const msg = lastUserMessage()
 
     if (sessionID !== syncedSessionID) {
+      if (!sessionID || !msg) return
       syncedSessionID = sessionID
-
-      // New/empty session — allow free mode switching
-      if (!sessionID || !msg) {
-        local.agent.setSessionHasMessages(false)
-        return
-      }
-
-      // Session has messages — restrict mode switching
-      local.agent.setSessionHasMessages(true)
 
       // Only set agent if it's a primary agent (not a subagent)
       const isPrimaryAgent = local.agent.list().some((x) => x.name === msg.agent)
@@ -1138,7 +1135,6 @@ export function Prompt(props: PromptProps) {
     // Capture mode before it gets reset
     const currentMode = store.mode
     const variant = local.model.variant.current()
-    local.agent.setSessionHasMessages(true)
 
     const clientSlash = inputText.startsWith("/")
       ? command.slashes().find((s) => s.display === inputText.trim())
