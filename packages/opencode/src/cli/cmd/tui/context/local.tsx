@@ -98,20 +98,23 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           batch(() => {
             const current = this.current()
             if (!current) return
-            let next = agents().findIndex((x) => x.name === current.name) + direction
-            if (next < 0) next = agents().length - 1
-            if (next >= agents().length) next = 0
-            const value = agents()[next]
-            if (!value) return
-            if (!canSwitchTo(value.name)) {
-              toast.show({
-                variant: "warning",
-                message: t("tui.agent.locked", { mode: agentStore.current ?? "" }),
-                duration: 3000,
-              })
-              return
+            const list = agents()
+            const currentIdx = list.findIndex((x) => x.name === current.name)
+            for (let i = 1; i < list.length; i++) {
+              let idx = currentIdx + direction * i
+              idx = ((idx % list.length) + list.length) % list.length
+              const candidate = list[idx]
+              if (!candidate) continue
+              if (canSwitchTo(candidate.name)) {
+                setAgentStore("current", candidate.name)
+                return
+              }
             }
-            setAgentStore("current", value.name)
+            toast.show({
+              variant: "warning",
+              message: t("tui.agent.locked", { mode: agentStore.current ?? "" }),
+              duration: 3000,
+            })
           })
         },
         setSessionHasMessages(value: boolean) {
