@@ -1164,7 +1164,23 @@ export function Session() {
       (agentID, prevAgentID) => {
         if (!prevAgentID) return
         if (scroll && !scroll.isDestroyed) {
-          if (scroll.scrollTop >= scroll.scrollHeight - 1) scrollByAgent.delete(prevAgentID)
+          // Determine whether the user was in "follow bottom" (sticky scroll) mode.
+          //
+          // A pixel-based check (`scrollTop >= scrollHeight - 1`) is racy here: the
+          // SolidJS effect fires after reactive renders that may have already grown
+          // scrollHeight (e.g. new streaming content, navigation chrome), but the
+          // framework's sticky-scroll adjustment (recalculateBarProps → applyStickyStart)
+          // hasn't run yet, leaving scrollTop momentarily behind scrollHeight.
+          //
+          // Instead, read opentui's internal `_hasManualScroll` flag — the authoritative
+          // "has the user scrolled away from the sticky edge" state. It's set true only
+          // on user-initiated scroll away from the sticky position, and reset false when
+          // the user scrolls back. This is immune to content-growth timing.
+          //
+          // If the field is absent (opentui internals changed), fall back to "at bottom"
+          // (safe direction — next visit will toBottom rather than restore a stale offset).
+          const hasManualScroll = (scroll as unknown as { _hasManualScroll?: boolean })._hasManualScroll
+          if (!hasManualScroll) scrollByAgent.delete(prevAgentID)
           else scrollByAgent.set(prevAgentID, scroll.scrollTop)
         }
         const saved = scrollByAgent.get(agentID)
