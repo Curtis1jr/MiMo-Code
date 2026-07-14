@@ -456,6 +456,25 @@ function applyCaching(msgs: ModelMessage[], model: Provider.Model): ModelMessage
   return msgs
 }
 
+// Normalize msg.content to always be an array of parts. The ModelMessage type
+// allows `content: string | Array<...>`, but some code paths (provider adapters,
+// AI SDK internals) call `.map()` on content assuming it's an array. A non-array
+// (string, object, undefined) at that point produces "j.map is not a function".
+// This guard runs once at the pipeline entry so all downstream transforms can
+// safely iterate over content.
+function normalizeContentArray(msgs: ModelMessage[]): ModelMessage[] {
+  return msgs.map((msg) => {
+    if (Array.isArray(msg.content)) return msg
+    if (typeof msg.content === "string") {
+      return msg.content === ""
+        ? msg
+        : { ...msg, content: [{ type: "text" as const, text: msg.content }] } as ModelMessage
+    }
+    // object / undefined / null — wrap in a text placeholder so .map is safe
+    return { ...msg, content: [{ type: "text" as const, text: "" }] } as ModelMessage
+  })
+}
+
 function unsupportedParts(msgs: ModelMessage[], model: Provider.Model): ModelMessage[] {
   return msgs.map((msg) => {
     if (msg.role !== "user" || !Array.isArray(msg.content)) return msg
@@ -756,6 +775,9 @@ function mapProviderOptions(
 }
 
 export function message(msgs: ModelMessage[], model: Provider.Model, options: Record<string, unknown>) {
+  // Ensure every msg.content is an array before any transform touches it.
+  // This prevents "j.map is not a function" when content is a string/object.
+  msgs = normalizeContentArray(msgs)
   msgs = unsupportedParts(msgs, model)
   msgs = limitImages(msgs, model)
   msgs = normalizeMessages(msgs, model, options)
