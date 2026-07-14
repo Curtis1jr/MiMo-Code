@@ -191,7 +191,7 @@ export function Prompt(props: PromptProps) {
 
   function voiceSwitchAgent(name: string) {
     const match = local.agent.list().find((x) => x.name.toLowerCase() === name.toLowerCase())
-    if (match) local.agent.set(match.name)
+    if (match) local.agent.userSwitch(match.name)
     else toast.show({ message: t("tui.voice.error.unknown_agent", { name: name }), variant: "error", duration: 3000 })
   }
 

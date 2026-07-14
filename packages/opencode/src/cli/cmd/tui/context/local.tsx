@@ -84,6 +84,9 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
               message: `Agent not found: ${name}`,
               duration: 3000,
             })
+          setAgentStore("current", name)
+        },
+        userSwitch(name: string) {
           if (!canSwitchTo(name)) {
             toast.show({
               variant: "warning",
@@ -92,7 +95,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
             })
             return
           }
-          setAgentStore("current", name)
+          this.set(name)
         },
         move(direction: 1 | -1) {
           batch(() => {
