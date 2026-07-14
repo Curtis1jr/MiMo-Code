@@ -89,10 +89,9 @@ export const Flag = {
   MIMOCODE_OUTPUT_LENGTH_CONTINUATION_LIMIT: number("MIMOCODE_OUTPUT_LENGTH_CONTINUATION_LIMIT") ?? 3,
   MIMOCODE_INVALID_OUTPUT_CONTINUATION_LIMIT: number("MIMOCODE_INVALID_OUTPUT_CONTINUATION_LIMIT") ?? 2,
   MIMOCODE_TEXT_TOOL_CALL_RETRY_LIMIT: number("MIMOCODE_TEXT_TOOL_CALL_RETRY_LIMIT") ?? 2,
-  // Empty/no-op tool-call loop guard: number of soft nudges (remind → replan)
-  // before the harness hard-halts the turn. N consecutive empty steps beyond
-  // this many recovery attempts terminates the turn. Mirrors TEXT_NGRAM_MAX_RECOVERY.
-  MIMOCODE_EMPTY_STEP_MAX_RECOVERY: number("MIMOCODE_EMPTY_STEP_MAX_RECOVERY") ?? 2,
+  // Empty tool-call retry limit: number of retries for a single empty tool
+  // call before the harness terminates the turn. Mirrors TEXT_TOOL_CALL_RETRY_LIMIT.
+  MIMOCODE_EMPTY_TOOL_CALL_RETRY_LIMIT: number("MIMOCODE_EMPTY_TOOL_CALL_RETRY_LIMIT") ?? 2,
 
   // Consecutive-block repetition detection for streamed reasoning + text.
   // A block of at least N tokens repeating REPEAT_THRESHOLD times consecutively

@@ -853,13 +853,15 @@ it.live("session.processor effect tests mark interruptions aborted without manua
   ),
 )
 
-it.live("session.processor effect tests stop on 3 consecutive empty tool calls", () =>
+it.live("session.processor effect tests: empty tool calls execute normally (retry handled by prompt loop)", () =>
   provideTmpdirServer(
     ({ dir, llm }) =>
       Effect.gen(function* () {
         const { processors, session, provider } = yield* boot()
 
         // Single response with 3 empty tool calls: two {}, one {_meta:'harmless'}.
+        // The processor no longer has a threshold-halt guard — empty tool calls
+        // execute normally. Retry logic lives in the prompt loop (autoRetryEmptyToolCall).
         yield* llm.push(
           raw({
             head: [
@@ -911,9 +913,11 @@ it.live("session.processor effect tests stop on 3 consecutive empty tool calls",
           tools: { bash: noopTool },
         })
 
-        expect(value).toBe("stop")
-        expect(handle.message.error).toBeDefined()
-        expect(handle.message.error?.name).toBe("UnknownError")
+        // Processor no longer halts on empty tool calls — it returns "continue"
+        // (there are pending tool parts) so the prompt loop can handle retries.
+        expect(value).toBe("continue")
+        // No error on the message — processor executed the tools normally.
+        expect(handle.message.error).toBeUndefined()
       }),
     { git: true, config: (url) => providerCfg(url) },
   ),
