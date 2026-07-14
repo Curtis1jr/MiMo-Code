@@ -49,11 +49,11 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       const visibleAgents = createMemo(() => sync.data.agent.filter((x) => !x.hidden))
       const [agentStore, setAgentStore] = createStore({
         current: undefined as string | undefined,
-        locked: false,
+        sessionHasMessages: false,
       })
       const FREE_SWITCH_GROUP = ["build", "plan"]
       const canSwitchTo = (target: string) => {
-        if (!agentStore.locked) return true
+        if (!agentStore.sessionHasMessages) return true
         const current = agentStore.current
         if (!current) return true
         const currentInGroup = FREE_SWITCH_GROUP.includes(current)
@@ -114,11 +114,8 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
             setAgentStore("current", value.name)
           })
         },
-        lock() {
-          setAgentStore("locked", true)
-        },
-        isLocked() {
-          return agentStore.locked
+        setSessionHasMessages(value: boolean) {
+          setAgentStore("sessionHasMessages", value)
         },
         color(name: string) {
           const index = visibleAgents().findIndex((x) => x.name === name)
