@@ -1,6 +1,7 @@
 import { NodeFileSystem } from "@effect/platform-node"
 import { expect } from "bun:test"
 import { Cause, Effect, Exit, Fiber, Layer } from "effect"
+import { tool, jsonSchema } from "ai"
 import path from "path"
 import type { Agent } from "../../src/agent/agent"
 import { Agent as AgentSvc } from "../../src/agent/agent"
@@ -847,6 +848,72 @@ it.live("session.processor effect tests mark interruptions aborted without manua
           expect(stored.info.error?.name).toBe("MessageAbortedError")
         }
         expect(state).toMatchObject({ type: "idle" })
+      }),
+    { git: true, config: (url) => providerCfg(url) },
+  ),
+)
+
+it.live("session.processor effect tests stop on 3 consecutive empty tool calls", () =>
+  provideTmpdirServer(
+    ({ dir, llm }) =>
+      Effect.gen(function* () {
+        const { processors, session, provider } = yield* boot()
+
+        // Single response with 3 empty tool calls: two {}, one {_meta:'harmless'}.
+        yield* llm.push(
+          raw({
+            head: [
+              { id: "chatcmpl-test", object: "chat.completion.chunk", choices: [{ delta: { role: "assistant" } }] },
+              { id: "chatcmpl-test", object: "chat.completion.chunk", choices: [{ delta: { tool_calls: [{ index: 0, id: "call_1", type: "function", function: { name: "bash", arguments: "" } }] } }] },
+              { id: "chatcmpl-test", object: "chat.completion.chunk", choices: [{ delta: { tool_calls: [{ index: 0, function: { arguments: "{}" } }] } }] },
+              { id: "chatcmpl-test", object: "chat.completion.chunk", choices: [{ delta: { tool_calls: [{ index: 1, id: "call_2", type: "function", function: { name: "bash", arguments: "" } }] } }] },
+              { id: "chatcmpl-test", object: "chat.completion.chunk", choices: [{ delta: { tool_calls: [{ index: 1, function: { arguments: "{}" } }] } }] },
+              { id: "chatcmpl-test", object: "chat.completion.chunk", choices: [{ delta: { tool_calls: [{ index: 2, id: "call_3", type: "function", function: { name: "bash", arguments: "" } }] } }] },
+              { id: "chatcmpl-test", object: "chat.completion.chunk", choices: [{ delta: { tool_calls: [{ index: 2, function: { arguments: '{"_meta":"harmless"}' } }] } }] },
+            ],
+            tail: [
+              { id: "chatcmpl-test", object: "chat.completion.chunk", choices: [{ delta: {}, finish_reason: "tool_calls" }] },
+            ],
+          }),
+        )
+
+        const chat = yield* session.create({})
+        const parent = yield* user(chat.id, "empty steps")
+        const msg = yield* assistant(chat.id, parent.id, path.resolve(dir))
+        const mdl = yield* provider.getModel(ref.providerID, ref.modelID)
+        const handle = yield* processors.create({
+          assistantMessage: msg,
+          sessionID: chat.id,
+          model: mdl,
+        })
+
+        // Register a no-op tool so the AI SDK accepts the tool calls.
+        const noopTool = tool({
+          description: "no-op",
+          inputSchema: jsonSchema({ type: "object", properties: {} }),
+          execute: async () => ({ output: "", title: "", metadata: {} }),
+        })
+
+        const value = yield* handle.process({
+          user: {
+            id: parent.id,
+            sessionID: chat.id,
+            role: "user",
+            time: parent.time,
+            agent: parent.agent,
+            model: { providerID: ref.providerID, modelID: ref.modelID },
+          } satisfies MessageV2.User,
+          sessionID: chat.id,
+          model: mdl,
+          agent: agent(),
+          system: [],
+          messages: [{ role: "user", content: "empty steps" }],
+          tools: { bash: noopTool },
+        })
+
+        expect(value).toBe("stop")
+        expect(handle.message.error).toBeDefined()
+        expect(handle.message.error?.name).toBe("UnknownError")
       }),
     { git: true, config: (url) => providerCfg(url) },
   ),
