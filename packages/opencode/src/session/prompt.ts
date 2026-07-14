@@ -700,7 +700,7 @@ ${entries}
         (p) => p.type === "text" && p.text.startsWith('<skill_content name="'),
       )
       if (!alreadyWrapped) {
-        // Use all() to include hidden skills (primarily compose:*) — respect the user's explicit /mention action
+        // Use all() to bypass per-agent permission filtering — respect the user's explicit /mention action
         const allSkills = yield* sys.all()
         if (allSkills.length > 0) {
           const bodyText = userMessage.parts
