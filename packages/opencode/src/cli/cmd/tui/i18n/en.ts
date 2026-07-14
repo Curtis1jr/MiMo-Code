@@ -276,6 +276,7 @@ export const dict: Record<string, string> = {
   "tui.command.variant.list.title": "Switch model variant",
   "tui.command.agent.cycle.reverse.title": "Agent cycle reverse",
   "tui.agent.locked": "Cannot switch mode mid-session after entering {{mode}} mode",
+  "tui.agent.locked.subset": "In this session, you can only switch between {{agents}}",
   "tui.command.provider.login.title": "Login",
   "tui.command.provider.connect.title": "Connect provider",
   "tui.command.provider.logout.title": "Logout",

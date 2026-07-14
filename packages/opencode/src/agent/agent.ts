@@ -109,6 +109,8 @@ export const layer = Layer.effect(
             "*": "allow",
             "compose:*": "deny",
           },
+          plan_enter: "deny",
+          plan_exit: "deny",
           external_directory: {
             "*": "ask",
             ...Object.fromEntries(whitelistedDirs.map((dir) => [dir, "allow"])),
@@ -135,6 +137,8 @@ export const layer = Layer.effect(
               defaults,
               Permission.fromConfig({
                 question: "allow",
+                plan_enter: "allow",
+                plan_exit: "allow",
               }),
               user,
             ),
@@ -173,6 +177,8 @@ export const layer = Layer.effect(
               defaults,
               Permission.fromConfig({
                 question: "allow",
+                plan_enter: "allow",
+                plan_exit: "allow",
                 external_directory: {
                   [path.join(Global.Path.data, "plans", "*")]: "allow",
                 },

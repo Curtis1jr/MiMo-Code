@@ -261,6 +261,7 @@ export const dict = {
   "tui.command.variant.list.title": "切换模型变体",
   "tui.command.agent.cycle.reverse.title": "反向循环切换智能体",
   "tui.agent.locked": "进入 {{mode}} 模式后无法在运行中切换模式",
+  "tui.agent.locked.subset": "已开始的会话中，只能在 {{agents}} 之间切换",
   "tui.command.provider.login.title": "登录",
   "tui.command.provider.connect.title": "连接服务商",
   "tui.command.provider.logout.title": "登出",

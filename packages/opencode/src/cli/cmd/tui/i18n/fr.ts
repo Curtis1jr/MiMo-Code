@@ -340,6 +340,7 @@ export const dict = {
   "tui.command.variant.list.title": "Changer de variante de modèle",
   "tui.command.agent.cycle.reverse.title": "Cycle d'agents (inverse)",
   "tui.agent.locked": "Impossible de changer de mode après être entré en mode {{mode}}",
+  "tui.agent.locked.subset": "Dans cette session, vous pouvez uniquement basculer entre {{agents}}",
   "tui.command.provider.login.title": "Connexion",
   "tui.command.provider.connect.title": "Connecter un fournisseur",
   "tui.command.provider.logout.title": "Déconnexion",

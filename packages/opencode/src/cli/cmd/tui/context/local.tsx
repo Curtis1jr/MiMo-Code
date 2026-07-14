@@ -56,9 +56,26 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         if (!agentStore.sessionHasMessages) return true
         const current = agentStore.current
         if (!current) return true
+        if (current === target) return true
         const currentInGroup = FREE_SWITCH_GROUP.includes(current)
         const targetInGroup = FREE_SWITCH_GROUP.includes(target)
         return currentInGroup && targetInGroup
+      }
+      const switchBlockedToast = () => {
+        const current = agentStore.current ?? ""
+        if (FREE_SWITCH_GROUP.includes(current)) {
+          toast.show({
+            variant: "warning",
+            message: t("tui.agent.locked.subset", { agents: FREE_SWITCH_GROUP.join(", ") }),
+            duration: 3000,
+          })
+        } else {
+          toast.show({
+            variant: "warning",
+            message: t("tui.agent.locked", { mode: current }),
+            duration: 3000,
+          })
+        }
       }
       const { theme } = useTheme()
       const colors = createMemo(() => [
@@ -88,11 +105,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         },
         userSwitch(name: string) {
           if (!canSwitchTo(name)) {
-            toast.show({
-              variant: "warning",
-              message: t("tui.agent.locked", { mode: agentStore.current ?? "" }),
-              duration: 3000,
-            })
+            switchBlockedToast()
             return
           }
           this.set(name)
@@ -113,11 +126,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
                 return
               }
             }
-            toast.show({
-              variant: "warning",
-              message: t("tui.agent.locked", { mode: agentStore.current ?? "" }),
-              duration: 3000,
-            })
+            switchBlockedToast()
           })
         },
         setSessionHasMessages(value: boolean) {

@@ -285,6 +285,7 @@ export const dict = {
   "tui.command.variant.list.title": "モデルバリアントを切り替え",
   "tui.command.agent.cycle.reverse.title": "エージェントを逆循環",
   "tui.agent.locked": "{{mode}} モードに入った後はモードを切り替えできません",
+  "tui.agent.locked.subset": "このセッションでは {{agents}} の間でのみ切り替え可能です",
   "tui.command.provider.login.title": "ログイン",
   "tui.command.provider.connect.title": "プロバイダに接続",
   "tui.command.provider.logout.title": "ログアウト",
