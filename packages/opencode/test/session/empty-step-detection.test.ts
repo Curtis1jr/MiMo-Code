@@ -5,10 +5,10 @@ import type { MessageV2 } from "../../src/session/message-v2"
 // Minimal part builders — only the fields isEmptyStep inspects. Cast through
 // unknown so we don't have to satisfy the full PartBase shape (id/messageID/…)
 // that isEmptyStep never reads.
-function toolPart(input: Record<string, unknown>, opts?: { providerExecuted?: boolean; status?: string }) {
+function toolPart(input: Record<string, unknown>, opts?: { providerExecuted?: boolean; status?: string; name?: string }) {
   return {
     type: "tool",
-    tool: "read",
+    tool: opts?.name ?? "read",
     metadata: opts?.providerExecuted ? { providerExecuted: true } : undefined,
     state: { status: opts?.status ?? "completed", input },
   } as unknown as MessageV2.Part
@@ -26,6 +26,9 @@ function textPart(text: string, opts?: { synthetic?: boolean; ignored?: boolean 
 function reasoningPart(text: string) {
   return { type: "reasoning", text } as unknown as MessageV2.Part
 }
+
+// toolHasArgs lookup: "plan_exit" and "plan_enter" have no required params.
+const toolHasArgs = (name: string) => name !== "plan_exit" && name !== "plan_enter"
 
 describe("isEmptyStep — case (a): tool call with empty/invalid input", () => {
   test("tool call with no keys is empty", () => {
@@ -61,6 +64,52 @@ describe("isEmptyStep — case (a): tool call with empty/invalid input", () => {
   test("provider-executed tool part is ignored for the has-tool test", () => {
     // Only a provider-executed part + no substantive output => empty terminal.
     expect(isEmptyStep([toolPart({ q: "x" }, { providerExecuted: true })])).toBe(true)
+  })
+})
+
+describe("isEmptyStep — schema-aware: no-arg tools are not flagged", () => {
+  test("no-arg tool (plan_exit) called with {} is NOT flagged empty", () => {
+    expect(isEmptyStep([toolPart({}, { name: "plan_exit" })], { toolHasArgs })).toBe(false)
+  })
+
+  test("no-arg tool (plan_enter) called with {} is NOT flagged empty", () => {
+    expect(isEmptyStep([toolPart({}, { name: "plan_enter" })], { toolHasArgs })).toBe(false)
+  })
+
+  test("args-accepting tool (read) called with {} IS still flagged empty", () => {
+    expect(isEmptyStep([toolPart({}, { name: "read" })], { toolHasArgs })).toBe(true)
+  })
+
+  test("without toolHasArgs, legacy behaviour: all {} inputs flagged", () => {
+    // No opts → defaults to hasArgs=true for all tools (backwards-compat).
+    expect(isEmptyStep([toolPart({}, { name: "plan_exit" })])).toBe(true)
+  })
+
+  test("no-arg tool with substantive text alongside is NOT empty", () => {
+    expect(
+      isEmptyStep(
+        [textPart("Exiting plan mode."), toolPart({}, { name: "plan_exit" })],
+        { toolHasArgs },
+      ),
+    ).toBe(false)
+  })
+
+  test("args-accepting tool with substantive text alongside is NOT empty", () => {
+    expect(
+      isEmptyStep(
+        [textPart("Reading the file."), toolPart({}, { name: "read" })],
+        { toolHasArgs },
+      ),
+    ).toBe(false)
+  })
+
+  test("no-arg tool with substantive reasoning alongside is NOT empty", () => {
+    expect(
+      isEmptyStep(
+        [reasoningPart("Let me exit plan mode."), toolPart({}, { name: "plan_exit" })],
+        { toolHasArgs },
+      ),
+    ).toBe(false)
   })
 })
 

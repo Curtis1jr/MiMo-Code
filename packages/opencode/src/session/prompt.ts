@@ -57,6 +57,7 @@ import {
 } from "../session/prompt/text-ngram-detection"
 import {
   isEmptyStep,
+  type IsEmptyStepOptions,
 } from "../session/prompt/empty-step-detection"
 import { builtinSkillRoot, matchDocumentSkills } from "@/skill/builtin/extract"
 import { ToolRegistry } from "../tool"
@@ -304,6 +305,28 @@ export const layer = Layer.effect(
     const llm = yield* LLM.Service
     const actorRegistry = yield* ActorRegistry.Service
     const inbox = yield* Inbox.Service
+
+    // Build a lookup: tool name → whether its parameter schema has required
+    // fields. Tools whose schema is z.object({}) (no required params) are
+    // called with {} legitimately and must NOT be flagged by isEmptyStep.
+    const toolDefs = yield* registry.all()
+    const toolHasRequiredArgs = new Map<string, boolean>()
+    for (const def of toolDefs) {
+      const schema = def.parameters
+      // z.object({}) has an empty shape — no required params.
+      if (schema instanceof z.ZodObject) {
+        const shape = schema.shape as Record<string, unknown>
+        const keys = Object.keys(shape)
+        // Tool has required args if any shape key is NOT wrapped in ZodOptional.
+        const hasRequired = keys.some((k) => !(shape[k] instanceof z.ZodOptional))
+        toolHasRequiredArgs.set(def.id, hasRequired)
+      } else {
+        // Unknown schema shape — assume it accepts args (safe default).
+        toolHasRequiredArgs.set(def.id, true)
+      }
+    }
+    const toolHasArgs: IsEmptyStepOptions["toolHasArgs"] = (name) =>
+      toolHasRequiredArgs.get(name) ?? true
 
     // Track sessions that have already shown the "loaded instructions" toast so we
     // surface it once per primary session rather than on every run-loop turn.
@@ -2722,7 +2745,7 @@ NOTE: At any point in time through this workflow you should feel free to ask the
             return false
           }
           const parts = MessageV2.parts(input.assistant.id)
-          if (!isEmptyStep(parts)) return false
+          if (!isEmptyStep(parts, { toolHasArgs })) return false
           // Discard the bad turn from request history: toModelMessages skips a
           // message whose info.error is set, so it can neither strand the
           // conversation on an assistant turn nor poison later context.

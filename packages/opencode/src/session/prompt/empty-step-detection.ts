@@ -21,16 +21,31 @@ import type { MessageV2 } from "../message-v2"
  * does not mean the model issued an actionable call.
  */
 
+export interface IsEmptyStepOptions {
+  /**
+   * Given a tool name, return whether the tool's parameter schema accepts
+   * required arguments. Tools whose schema is z.object({}) (no required
+   * params) or all-optional always return valid calls with {} — they must
+   * NOT be flagged as empty.
+   *
+   * When omitted the check degrades to the legacy behaviour (all {} inputs
+   * flagged), which is backwards-compatible but will false-positive on
+   * no-arg tools like plan_exit / plan_enter.
+   */
+  toolHasArgs?: (toolName: string) => boolean
+}
+
 /**
  * Is this assistant step an empty / no-op tool call?
  *
  * Two shapes count as empty (mirrors the task's definition):
  *
  *  (a) The step emitted one or more client (non-providerExecuted) tool parts,
- *      but EVERY such tool part has an empty/invalid input — no keys, or only
- *      keys whose values are null/undefined/empty-string/whitespace. The model
- *      "called a tool" but passed nothing actionable, so the call cannot make
- *      progress and re-looping just repeats it.
+ *      but EVERY such tool part has an empty/invalid input AND the tool
+ *      actually accepts required arguments. A no-arg tool (schema z.object({}))
+ *      called with {} is legitimate and is NOT flagged. Additionally, if the
+ *      step carries substantive text or reasoning alongside the tool call(s),
+ *      it is not treated as empty.
  *
  *  (b) The step produced NO client tool part at all AND no substantive text and
  *      no substantive reasoning — a fully empty terminal. (This overlaps with
@@ -43,29 +58,43 @@ import type { MessageV2 } from "../message-v2"
  * the "has a tool part" test: they are not client actions and their presence
  * does not mean the model issued an actionable call.
  */
-export function isEmptyStep(parts: readonly MessageV2.Part[]): boolean {
+export function isEmptyStep(parts: readonly MessageV2.Part[], opts?: IsEmptyStepOptions): boolean {
   const clientToolParts = parts.filter(
     (part): part is Extract<MessageV2.Part, { type: "tool" }> =>
       part.type === "tool" && !part.metadata?.providerExecuted,
   )
 
   if (clientToolParts.length > 0) {
-    // (a) Every client tool part has an empty/invalid input.
-    return clientToolParts.every((part) => isEmptyInput(part.state.input))
+    // If the step carries substantive text or reasoning alongside tool calls,
+    // the model is making progress — don't treat as empty regardless of input.
+    if (hasSubstantiveContent(parts)) return false
+
+    // (a) Every client tool part has an empty/invalid input AND actually
+    //     accepts required arguments. A no-arg tool (schema z.object({}))
+    //     called with {} is a legitimate invocation — skip it.
+    return clientToolParts.every((part) => {
+      // If we can't introspect the schema, fall through to legacy behaviour.
+      const hasArgs = opts?.toolHasArgs?.(part.tool) ?? true
+      return hasArgs && isEmptyInput(part.state.input)
+    })
   }
 
   // (b) No client tool part — empty only if there is also no substantive
   // text and no substantive reasoning (a pure-empty terminal). A step with a
   // real text answer or real reasoning is a legitimate (non-loop) outcome.
+  return !hasSubstantiveContent(parts)
+}
+
+/** Does this step carry any substantive text or reasoning? */
+function hasSubstantiveContent(parts: readonly MessageV2.Part[]): boolean {
   const hasSubstantiveText = parts.some(
     (part) => part.type === "text" && !part.synthetic && !part.ignored && part.text.trim().length > 0,
   )
-  if (hasSubstantiveText) return false
+  if (hasSubstantiveText) return true
   const hasSubstantiveReasoning = parts.some(
     (part) => part.type === "reasoning" && part.text.trim().length > 0,
   )
-  if (hasSubstantiveReasoning) return false
-  return true
+  return hasSubstantiveReasoning
 }
 
 /**
