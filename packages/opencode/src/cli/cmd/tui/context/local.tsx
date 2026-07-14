@@ -49,7 +49,17 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       const visibleAgents = createMemo(() => sync.data.agent.filter((x) => !x.hidden))
       const [agentStore, setAgentStore] = createStore({
         current: undefined as string | undefined,
+        locked: false,
       })
+      const FREE_SWITCH_GROUP = ["build", "plan"]
+      const canSwitchTo = (target: string) => {
+        if (!agentStore.locked) return true
+        const current = agentStore.current
+        if (!current) return true
+        const currentInGroup = FREE_SWITCH_GROUP.includes(current)
+        const targetInGroup = FREE_SWITCH_GROUP.includes(target)
+        return currentInGroup && targetInGroup
+      }
       const { theme } = useTheme()
       const colors = createMemo(() => [
         theme.secondary,
@@ -74,6 +84,14 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
               message: `Agent not found: ${name}`,
               duration: 3000,
             })
+          if (!canSwitchTo(name)) {
+            toast.show({
+              variant: "warning",
+              message: t("tui.agent.locked"),
+              duration: 3000,
+            })
+            return
+          }
           setAgentStore("current", name)
         },
         move(direction: 1 | -1) {
@@ -84,8 +102,23 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
             if (next < 0) next = agents().length - 1
             if (next >= agents().length) next = 0
             const value = agents()[next]
+            if (!value) return
+            if (!canSwitchTo(value.name)) {
+              toast.show({
+                variant: "warning",
+                message: t("tui.agent.locked"),
+                duration: 3000,
+              })
+              return
+            }
             setAgentStore("current", value.name)
           })
+        },
+        lock() {
+          setAgentStore("locked", true)
+        },
+        isLocked() {
+          return agentStore.locked
         },
         color(name: string) {
           const index = visibleAgents().findIndex((x) => x.name === name)

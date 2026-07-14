@@ -1,6 +1,5 @@
 ---
 name: compose:subagent
-hidden: true
 description: Use when executing implementation plans with independent tasks in the current session
 ---
 

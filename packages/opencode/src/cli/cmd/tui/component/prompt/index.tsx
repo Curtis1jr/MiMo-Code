@@ -528,6 +528,8 @@ export function Prompt(props: PromptProps) {
           local.model.variant.set(msg.model.variant)
         }
       }
+      // Session already has messages — lock agent mode
+      local.agent.lock()
     }
   })
 
@@ -1131,6 +1133,7 @@ export function Prompt(props: PromptProps) {
     // Capture mode before it gets reset
     const currentMode = store.mode
     const variant = local.model.variant.current()
+    local.agent.lock()
 
     const clientSlash = inputText.startsWith("/")
       ? command.slashes().find((s) => s.display === inputText.trim())

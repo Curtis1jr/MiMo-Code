@@ -105,6 +105,10 @@ export const layer = Layer.effect(
         const defaults = Permission.fromConfig({
           "*": "allow",
           doom_loop: "ask",
+          skill: {
+            "*": "allow",
+            "compose:*": "deny",
+          },
           external_directory: {
             "*": "ask",
             ...Object.fromEntries(whitelistedDirs.map((dir) => [dir, "allow"])),
@@ -206,6 +210,7 @@ export const layer = Layer.effect(
               defaults,
               Permission.fromConfig({
                 question: "allow",
+                skill: { "compose:*": "allow" },
               }),
               user,
             ),
