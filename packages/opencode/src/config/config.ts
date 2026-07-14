@@ -29,6 +29,7 @@ import { ConfigAgent } from "./agent"
 import { ConfigCommand } from "./command"
 import { ConfigCompose } from "./compose"
 import { ConfigFormatter } from "./formatter"
+import { MIMOCODE_GITIGNORE_ENTRIES } from "./gitignore"
 import { ConfigHistory } from "./history"
 import { ConfigLayout } from "./layout"
 import { ConfigLSP } from "./lsp"
@@ -640,7 +641,7 @@ export const layer = Layer.effect(
         yield* fs
           .writeFileString(
             gitignore,
-            ["node_modules", "package.json", "package-lock.json", "bun.lock", ".gitignore", ".cron-lock", "scheduled_tasks.json"].join("\n"),
+            MIMOCODE_GITIGNORE_ENTRIES.join("\n"),
           )
           .pipe(
             Effect.catchIf(
