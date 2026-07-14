@@ -27,7 +27,6 @@ import { isRecord } from "@/util/record"
 import { createTextNgramMonitor, type TextNgramMonitor } from "./prompt/text-ngram-detection"
 
 const DOOM_LOOP_THRESHOLD = 3
-const EMPTY_STEP_THRESHOLD = 3
 const log = Log.create({ service: "session.processor" })
 
 export type Result = "overflow" | "stop" | "continue" | "text-repeat"
@@ -150,7 +149,6 @@ interface ProcessorContext extends Input {
   stepPartIds: PartID[]
   textNgramMonitor: TextNgramMonitor | undefined
   textNgramRepeat: boolean
-  emptyStepCount: number
 }
 
 type StreamEvent = Event
@@ -207,7 +205,6 @@ export const layer: Layer.Layer<
         stepPartIds: [],
         textNgramMonitor: undefined,
         textNgramRepeat: false,
-        emptyStepCount: 0,
       }
       let aborted = false
       // Only the main agent owns session-level status. Subagents (explore,
@@ -326,22 +323,6 @@ export const layer: Layer.Layer<
         if (ctx.textNgramMonitor.append(text)) ctx.textNgramRepeat = true
       }
 
-      const isEmptyInput = (input: Record<string, unknown> | undefined | null): boolean => {
-        if (input === undefined || input === null) return true
-        // Filter out meta/underscore-prefixed fields — they are harness
-        // bookkeeping, not actionable tool arguments.
-        const keys = Object.keys(input).filter((k) => !k.startsWith("_"))
-        if (keys.length === 0) return true
-        return keys.every((k) => {
-          const v = input[k]
-          if (v === undefined || v === null) return true
-          if (typeof v === "string") return v.trim().length === 0
-          if (Array.isArray(v)) return v.length === 0
-          if (typeof v === "object") return Object.keys(v as Record<string, unknown>).length === 0
-          return false
-        })
-      }
-
       const handleEvent = Effect.fnUntraced(function* (value: StreamEvent) {
         switch (value.type) {
           case "start":
@@ -437,17 +418,6 @@ export const layer: Layer.Layer<
                 ? { ...value.providerMetadata, providerExecuted: true }
                 : value.providerMetadata,
             }))
-
-            // Unconditional empty-step guard: genuine empty tool calls always
-            // counted, regardless of error/summary/structured/finish state.
-            if (isEmptyInput(value.input)) {
-              ctx.emptyStepCount++
-              if (ctx.emptyStepCount >= EMPTY_STEP_THRESHOLD) {
-                throw new Error(`Empty tool call loop detected: ${ctx.emptyStepCount} consecutive empty tool calls. Session terminated.`)
-              }
-              return
-            }
-            ctx.emptyStepCount = 0
 
             const parts = MessageV2.parts(ctx.assistantMessage.id)
             const recentParts = parts.slice(-DOOM_LOOP_THRESHOLD)

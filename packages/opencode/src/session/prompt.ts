@@ -56,9 +56,6 @@ import {
   TEXT_NGRAM_RECOVERY_REPLAN,
 } from "../session/prompt/text-ngram-detection"
 import {
-  EMPTY_STEP_MAX_RECOVERY,
-  EMPTY_STEP_RECOVERY_REMIND,
-  EMPTY_STEP_RECOVERY_REPLAN,
   isEmptyStep,
 } from "../session/prompt/empty-step-detection"
 import { builtinSkillRoot, matchDocumentSkills } from "@/skill/builtin/extract"
@@ -248,6 +245,7 @@ const PREDICT_NUDGE = `Based on the conversation above, write the user's most li
 const OUTPUT_LENGTH_CONTINUATION_LIMIT = Flag.MIMOCODE_OUTPUT_LENGTH_CONTINUATION_LIMIT
 const INVALID_OUTPUT_CONTINUATION_LIMIT = Flag.MIMOCODE_INVALID_OUTPUT_CONTINUATION_LIMIT
 const TEXT_TOOL_CALL_RETRY_LIMIT = Flag.MIMOCODE_TEXT_TOOL_CALL_RETRY_LIMIT
+const EMPTY_TOOL_CALL_RETRY_LIMIT = Flag.MIMOCODE_EMPTY_TOOL_CALL_RETRY_LIMIT
 
 const log = Log.create({ service: "session.prompt" })
 
@@ -2142,19 +2140,10 @@ NOTE: At any point in time through this workflow you should feel free to ask the
         // prose text instead of a structured tool_use). Local to runLoop so each
         // fresh user turn starts clean.
         let textToolCallRetries = 0
-        // Consecutive empty/no-op tool-call steps in this turn. Counts steps
-        // where the model "called a tool" with empty/invalid input, or produced
-        // no valid tool part and no substantive output at all (see isEmptyStep).
-        // A single non-empty step resets it. Escalates soft (remind → replan)
-        // then hard-halts once it exceeds EMPTY_STEP_MAX_RECOVERY, mirroring the
-        // text-ngram ladder. Local to runLoop so a fresh user turn starts clean.
-        let emptyStepStreak = 0
-        // Set true when a guard hard-halts the turn (currently the empty-step
-        // guard). A hard halt is terminal: it must break out immediately and
-        // NOT be re-entered by the taskGate / goalGate ReAct gates, which would
-        // otherwise inject a fresh user turn and re-drive a still-degraded model
-        // into the same loop.
-        let hardHalt = false
+        // Bounded retries for empty tool calls (model called a tool with
+        // empty/invalid arguments, or produced a fully empty terminal).
+        // Mirrors textToolCallRetries. Local to runLoop, resets per user turn.
+        let emptyToolCallRetries = 0
         const resolvedAgentID = agentID ?? "main"
         // Tracks plugin-driven cancellation (session.pre OR any session.userQuery.pre)
         // so session.post reports outcome="cancelled" instead of "error".
@@ -2707,21 +2696,14 @@ NOTE: At any point in time through this workflow you should feel free to ask the
           return true
         })
 
-        // Empty/no-op tool-call loop guard. Symmetric across main and fork
-        // branches, mirroring handleTextRepeat's soft→hard ladder but keyed on
-        // *empty steps* (empty/invalid tool input, or a fully empty terminal)
-        // rather than repeated text n-grams — the gap TEXT_NGRAM and
-        // stepSignature both miss (an empty tool call has no text to match and
-        // is dropped by stepSignature's undefined path).
-        //
-        // Returns:
-        //   "none"     — the step was NOT empty; streak reset, caller continues
-        //                normal classification.
-        //   "continue" — empty step, still within the soft-nudge budget; a
-        //                remind/replan reminder was injected, caller should loop.
-        //   "halt"     — empty streak exceeded EMPTY_STEP_MAX_RECOVERY; a
-        //                terminal error was published, caller must break.
-        const handleEmptyStep = Effect.fn("SessionPrompt.handleEmptyStep")(function* (input: {
+        // Empty tool-call retry. A single empty tool call (empty/invalid
+        // arguments, or a fully empty terminal) is an invalid output — it must
+        // IMMEDIATELY trigger a RETRY that makes the model re-emit a valid call.
+        // The bad assistant turn is DISCARDED from history (error-tagged), and a
+        // synthetic user turn is appended to re-drive generation — mirrors
+        // autoRetryTextToolCall exactly. On exhaustion the error stays terminal.
+        // Returns true ⇒ continue; false ⇒ break.
+        const autoRetryEmptyToolCall = Effect.fn("SessionPrompt.autoRetryEmptyToolCall")(function* (input: {
           lastUser: MessageV2.User
           assistant: MessageV2.Assistant
         }) {
@@ -2737,40 +2719,34 @@ NOTE: At any point in time through this workflow you should feel free to ask the
             input.assistant.finish === "content-filter" ||
             input.assistant.finish === "error"
           ) {
-            return "none" as const
+            return false
           }
           const parts = MessageV2.parts(input.assistant.id)
-          if (!isEmptyStep(parts)) {
-            emptyStepStreak = 0
-            return "none" as const
-          }
-          emptyStepStreak++
-          if (emptyStepStreak > EMPTY_STEP_MAX_RECOVERY) {
-            yield* slog.info("empty step: max recovery exceeded, terminating", { streak: emptyStepStreak })
-            hardHalt = true
-            // Discard the empty turn from request history so it can neither
-            // strand the conversation on an assistant prefill nor poison later
-            // context (toModelMessages skips a message whose info.error is set).
-            if (!input.assistant.error) {
-              input.assistant.error = new NamedError.Unknown({
-                message: `Empty tool call loop detected: ${emptyStepStreak} consecutive empty/no-op steps after ${EMPTY_STEP_MAX_RECOVERY} recovery attempts. Session terminated.`,
-              }).toObject()
-              yield* sessions.updateMessage(input.assistant)
-            }
+          if (!isEmptyStep(parts)) return false
+          // Discard the bad turn from request history: toModelMessages skips a
+          // message whose info.error is set, so it can neither strand the
+          // conversation on an assistant turn nor poison later context.
+          input.assistant.error = new MessageV2.EmptyToolCallError({
+            message: "Model emitted an empty or argument-less tool call.",
+          }).toObject()
+          yield* sessions.updateMessage(input.assistant)
+          if (emptyToolCallRetries >= EMPTY_TOOL_CALL_RETRY_LIMIT) {
             yield* bus.publish(Session.Event.Error, {
-              sessionID,
-              error: new NamedError.Unknown({
-                message: `Empty tool call loop detected: ${emptyStepStreak} consecutive empty/no-op steps after ${EMPTY_STEP_MAX_RECOVERY} recovery attempts. Session terminated.`,
-              }).toObject(),
+              sessionID: input.assistant.sessionID,
+              error: input.assistant.error,
             })
-            return "halt" as const
+            return false
           }
-          const recoveryText =
-            emptyStepStreak === 1 ? EMPTY_STEP_RECOVERY_REMIND : EMPTY_STEP_RECOVERY_REPLAN
-          const reentry = yield* sessions.updateMessage({
+          emptyToolCallRetries++
+          yield* slog.info("retrying empty tool call", { attempt: emptyToolCallRetries })
+          // Append a synthetic user turn so the discarded assistant becomes stale
+          // (classify staleness guard) AND the loop reaches generation — mirrors
+          // autoRetryTextToolCall. Without this the loop re-enters, re-detects
+          // the same turn, and burns retries with zero model calls.
+          const msg = yield* sessions.updateMessage({
             id: MessageID.ascending(),
             role: "user" as const,
-            sessionID,
+            sessionID: input.lastUser.sessionID,
             agentID: input.lastUser.agentID,
             agent: input.lastUser.agent,
             model: input.lastUser.model,
@@ -2780,14 +2756,20 @@ NOTE: At any point in time through this workflow you should feel free to ask the
           })
           yield* sessions.updatePart({
             id: PartID.ascending(),
-            messageID: reentry.id,
-            sessionID,
+            messageID: msg.id,
+            sessionID: msg.sessionID,
             type: "text",
             synthetic: true,
-            text: recoveryText,
+            text: [
+              "<system-reminder>",
+              "Your previous tool call had empty or invalid arguments.",
+              "Re-issue a valid tool call with complete, non-empty arguments,",
+              "or reply to the user directly with plain text.",
+              "Do NOT emit another empty or argument-less tool call.",
+              "</system-reminder>",
+            ].join("\n"),
           } satisfies MessageV2.TextPart)
-          yield* slog.info("empty step: recovery injected", { streak: emptyStepStreak })
-          return "continue" as const
+          return true
         })
 
 
@@ -2940,6 +2922,11 @@ NOTE: At any point in time through this workflow you should feel free to ask the
               yield* slog.info("exiting loop", { classification: classification.type })
               break
             }
+            // Empty tool-call retry (existing-assistant branch). A single
+            // empty tool call triggers immediate retry — discard bad turn +
+            // synthetic user message + continue. Catches empty tool calls
+            // before classify routes them to "continue" (pending tool parts).
+            if (yield* autoRetryEmptyToolCall({ lastUser, assistant: lastAssistant })) continue
             if (classification.type === "think-only" || classification.type === "invalid") {
               const reason = classification.type === "invalid" ? classification.reason : "think-only"
               if (yield* autoContinueInvalidOutput({ lastUser, assistant: lastAssistant, reason })) continue
@@ -3493,13 +3480,10 @@ NOTE: At any point in time through this workflow you should feel free to ask the
                 return "break" as const
               }
 
-              // Empty/no-op tool-call loop guard (fork branch). Intercept before
-              // classify would `continue` an empty tool-calls step: soft-nudge
-              // within budget, hard-halt once exceeded. A non-empty step returns
-              // "none" and falls through to normal classification.
-              const forkEmptyStep = yield* handleEmptyStep({ lastUser, assistant: handle.message })
-              if (forkEmptyStep === "halt") return "break" as const
-              if (forkEmptyStep === "continue") return "continue" as const
+              // Empty tool-call retry (fork branch). A single empty tool call
+              // triggers immediate retry — discard bad turn + synthetic user
+              // message + continue. On exhaustion, break.
+              if (yield* autoRetryEmptyToolCall({ lastUser, assistant: handle.message })) return "continue" as const
 
               const forkClassification = classifyAssistantStep({
                 phase: "after-process",
@@ -3719,13 +3703,10 @@ NOTE: At any point in time through this workflow you should feel free to ask the
               return "break" as const
             }
 
-            // Empty/no-op tool-call loop guard (main branch). Intercept before
-            // classify would `continue` an empty tool-calls step: soft-nudge
-            // within budget, hard-halt once exceeded. A non-empty step returns
-            // "none" and falls through to normal classification.
-            const emptyStep = yield* handleEmptyStep({ lastUser, assistant: handle.message })
-            if (emptyStep === "halt") return "break" as const
-            if (emptyStep === "continue") return "continue" as const
+            // Empty tool-call retry (main branch). A single empty tool call
+            // triggers immediate retry — discard bad turn + synthetic user
+            // message + continue. On exhaustion, break.
+            if (yield* autoRetryEmptyToolCall({ lastUser, assistant: handle.message })) return "continue" as const
 
             const classification = classifyAssistantStep({
               phase: "after-process",
@@ -3875,9 +3856,6 @@ NOTE: At any point in time through this workflow you should feel free to ask the
           }
 
           if (outcome === "break") {
-            // A hard halt is terminal — skip the ReAct re-entry gates so a
-            // degraded model can't be re-driven into the same empty loop.
-            if (hardHalt) break
             if (yield* taskGate(lastUser)) continue
             if (yield* goalGate(lastUser)) continue
             break

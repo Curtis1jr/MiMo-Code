@@ -115,12 +115,11 @@ describe("invalid-output continuation — integration", () => {
     }
   })
 
-  test("repeated empty output is caught by the empty-step guard and halts the turn", async () => {
+  test("repeated empty output exhausts retry limit and halts the turn", async () => {
     await using tmp = await tmpdir({ git: true })
     // Server repeats the last entry, so every call returns an empty stop.
-    // The empty/no-op tool-call guard (empty-step-detection) intercepts these
-    // empty terminals BEFORE autoContinueInvalidOutput and hard-halts the turn
-    // after EMPTY_STEP_MAX_RECOVERY soft nudges + 1 halting step.
+    // The empty tool-call retry guard (autoRetryEmptyToolCall) intercepts these
+    // and retries up to EMPTY_TOOL_CALL_RETRY_LIMIT, then terminates the turn.
     const stub = startScriptedLLMServer([{ lines: emptyStopResponse() }])
     try {
       await writeConfig(tmp.path, stub.origin)
@@ -137,8 +136,8 @@ describe("invalid-output continuation — integration", () => {
                 agent: "build",
                 parts: [{ type: "text", text: "Answer my question." }],
               })
-              // EMPTY_STEP_MAX_RECOVERY soft nudges + 1 halting step.
-              expect(stub.captures.length).toBe(Flag.MIMOCODE_EMPTY_STEP_MAX_RECOVERY + 1)
+              // EMPTY_TOOL_CALL_RETRY_LIMIT retries + 1 initial call.
+              expect(stub.captures.length).toBe(Flag.MIMOCODE_EMPTY_TOOL_CALL_RETRY_LIMIT + 1)
               expect(result.info.role).toBe("assistant")
               if (result.info.role === "assistant") {
                 expect(result.info.error).toBeDefined()
