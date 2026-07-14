@@ -61,7 +61,6 @@ import {
   EMPTY_STEP_RECOVERY_REPLAN,
   isEmptyStep,
 } from "../session/prompt/empty-step-detection"
-import { composeSkillsBlock } from "@/skill/compose/extract"
 import { builtinSkillRoot, matchDocumentSkills } from "@/skill/builtin/extract"
 import { ToolRegistry } from "../tool"
 import { MCP } from "../mcp"
@@ -651,12 +650,10 @@ export const layer = Layer.effect(
         (msg) => msg.info.role === "user" && msg.info.agent === "compose",
       )
       if (composeModeMsg) {
-        const composeModeBlock = composeSkillsBlock()
         const ctx = yield* InstanceState.context
         const composeCfg = (yield* config.get()).compose
         const docsDir = ConfigCompose.resolveDocsDir(ctx.worktree, composeCfg)
         const text = PROMPT_COMPOSE
-          .replace("{{compose_skills}}", composeModeBlock)
           .replace("{{compose_docs_dir}}", `Save compose skill outputs: specs in \`${path.join(docsDir, "specs")}\`, plans in \`${path.join(docsDir, "plans")}\`, reports in \`${path.join(docsDir, "reports")}\`.`)
         composeModeMsg.parts.unshift({
           id: PartID.ascending(),
