@@ -87,7 +87,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           if (!canSwitchTo(name)) {
             toast.show({
               variant: "warning",
-              message: t("tui.agent.locked"),
+              message: t("tui.agent.locked", { mode: agentStore.current ?? "" }),
               duration: 3000,
             })
             return
@@ -106,7 +106,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
             if (!canSwitchTo(value.name)) {
               toast.show({
                 variant: "warning",
-                message: t("tui.agent.locked"),
+                message: t("tui.agent.locked", { mode: agentStore.current ?? "" }),
                 duration: 3000,
               })
               return

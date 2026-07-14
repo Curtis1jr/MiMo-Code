@@ -284,6 +284,7 @@ export const dict = {
   "tui.command.variant.cycle.title": "バリアントを循環",
   "tui.command.variant.list.title": "モデルバリアントを切り替え",
   "tui.command.agent.cycle.reverse.title": "エージェントを逆循環",
+  "tui.agent.locked": "{{mode}} モードに入った後はモードを切り替えできません",
   "tui.command.provider.login.title": "ログイン",
   "tui.command.provider.connect.title": "プロバイダに接続",
   "tui.command.provider.logout.title": "ログアウト",
