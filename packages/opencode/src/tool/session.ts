@@ -195,44 +195,6 @@ function tagTitle(topic: string, title: string): string {
   return `[topic:${topic}] ${base}`
 }
 
-// Sentinel value: pass topic="__fresh__" to explicitly opt out of auto-routing
-// and force a fresh session even when dir/PR would match an existing topic.
-const FRESH_SENTINEL = "__fresh__"
-
-// deriveTopic: stable topic derivation from create-operation context.
-// Same inputs always produce the same topic key, enabling automatic session
-// reuse when the LLM doesn't pass --topic. Falls back to no auto-route if
-// no stable signal is available.
-//
-// Signals (in priority order):
-//   1. PR number in task text (e.g. "#1234", "PR 1234", "pull/1234")
-//   2. Directory basename (normalized: lowercased, non-alphanum → hyphens)
-//
-// The derived key is prefixed with "auto:" so explicit topics (no prefix)
-// always take precedence in the find-or-reuse lookup — a caller can't
-// accidentally collide with an auto-derived topic.
-function deriveTopic(op: { task: string; dir?: string }): string | undefined {
-  // Signal 1: PR number in the task description
-  // Matches: "PR 1234", "#1234", "pull/1234"
-  // Does NOT match: "issue #1234" (word chars before #), "version 1.2.3"
-  const prMatch = op.task.match(/(?:^|[\s])PR\s+(\d+)|(?<!\w)#(\d+)|(?:^|[\s])pull\/(\d+)/i)
-  if (prMatch) {
-    const num = prMatch[1] ?? prMatch[2] ?? prMatch[3]
-    return `auto:pr-${num}`
-  }
-
-  // Signal 2: directory basename (last path component, normalized)
-  if (op.dir) {
-    const basename = path.basename(op.dir).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")
-    if (basename.length > 0) {
-      return `auto:dir-${basename}`
-    }
-  }
-
-  // No stable signal — return undefined so a fresh session is always created.
-  return undefined
-}
-
 
 const createOperation = z.strictObject({
   action: z.literal("create"),
@@ -252,7 +214,7 @@ const createOperation = z.strictObject({
     .min(1)
     .optional()
     .describe(
-      "Reuse a standing per-theme child: if a peer child already carries this topic, RELAY the task into it (enqueue+wake) instead of spawning; otherwise create a new child tagged with this topic. Avoids over-spawning sessions for the same theme.",
+      "Semantic key for session reuse: if a peer child already carries this exact topic, RELAY the task into it (enqueue+wake) instead of spawning a new child. When absent, a fresh session is always created — no auto-derivation or guessing. Use the same stable topic string across calls to consolidate same-theme work into one standing child.",
     ),
 })
 
@@ -650,17 +612,6 @@ export const SessionTool = Tool.define<typeof parameters, Metadata, Deps>(
 
       if (op.action === "create") {
         const actor = yield* requireActor()
-
-        // Auto-topic routing: when the caller doesn't pass --topic, derive a
-        // stable topic from the operation context (PR number or dir basename).
-        // This makes same-theme child sessions auto-reuse without the LLM
-        // having to manually pass --topic every time. The explicit FRESH_SENTINEL
-        // ("__fresh__") opts out and forces a fresh session.
-        if (!op.topic) {
-          op.topic = deriveTopic(op)
-        } else if (op.topic === FRESH_SENTINEL) {
-          op.topic = undefined
-        }
 
         // --topic find-or-reuse: before spawning, look for a standing peer child
         // already tagged with this topic. If found, RELAY the task into it
@@ -1170,6 +1121,3 @@ export const SessionTool = Tool.define<typeof parameters, Metadata, Deps>(
     } satisfies Tool.DefWithoutID<typeof parameters, Metadata>
   }),
 )
-
-// Exported for testing only — not part of the public API.
-export { deriveTopic, FRESH_SENTINEL }
