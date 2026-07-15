@@ -31,7 +31,7 @@ import { MessageV2 } from "../../src/session/message-v2"
 import { Flag } from "../../src/flag/flag"
 import { Log } from "../../src/util"
 import { tmpdir } from "../fixture/fixture"
-import { startScriptedLLMServer, emptyStopResponse, textStopResponse } from "../lib/scripted-llm-server"
+import { startScriptedLLMServer, emptyStopResponse, textStopResponse, toolCallResponse } from "../lib/scripted-llm-server"
 
 void Log.init({ print: false })
 
@@ -168,6 +168,47 @@ describe("empty tool-call retry — integration", () => {
               if (result.info.role === "assistant") {
                 expect(result.info.error).toBeUndefined()
               }
+            }),
+          ),
+      })
+    } finally {
+      await stub.stop()
+    }
+  })
+
+  test("case-(a) empty call with live completed tool part: exhaustion terminates loop", async () => {
+    // Regression: a tool call with empty args {} that executes to status=completed
+    // (e.g. bash {command:' '} that runs successfully) was previously classified
+    // as "continue" by classify step #1 (completed tool part), causing the loop
+    // to re-drive indefinitely after retry exhaustion. The fix adds !assistant.error
+    // to classify step #1 and makes autoRetryEmptyToolCall return "break" on
+    // exhaustion so the caller terminates explicitly.
+    await using tmp = await tmpdir({ git: true })
+    // Every response is a tool call with empty args. The stub repeats its last
+    // entry forever, so if the guard failed to halt this would spin indefinitely.
+    const stub = startScriptedLLMServer([
+      { lines: toolCallResponse({ id: "call_0", name: "bash", args: "{}" }) },
+    ])
+    try {
+      await writeConfig(tmp.path, stub.origin)
+      await Instance.provide({
+        directory: tmp.path,
+        fn: () =>
+          run(
+            Effect.gen(function* () {
+              const sessions = yield* Session.Service
+              const prompt = yield* SessionPrompt.Service
+              const session = yield* sessions.create({ title: "empty-tool-part-halt" })
+              const result = yield* prompt.prompt({
+                sessionID: session.id,
+                agent: "build",
+                parts: [{ type: "text", text: "Run a command." }],
+              })
+              // Turn terminated (did not hang) with an error on the assistant.
+              expect(result.info.role).toBe("assistant")
+              if (result.info.role === "assistant") expect(result.info.error).toBeDefined()
+              // Bounded: EMPTY_TOOL_CALL_RETRY_LIMIT retries + 1 initial call.
+              expect(stub.captures.length).toBe(Flag.MIMOCODE_EMPTY_TOOL_CALL_RETRY_LIMIT + 1)
             }),
           ),
       })

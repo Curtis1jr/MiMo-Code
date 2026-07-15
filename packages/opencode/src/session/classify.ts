@@ -46,7 +46,11 @@ export function classifyAssistantStep(input: {
   // terminal failures. Without this guard, classify mis-routes errored steps
   // to "continue", runLoop re-enters and gets stranded on permission.ask
   // from the in-flight tool that won't ever resolve. See Spec ③.
+  // Also skip when assistant.error is already set — the turn was discarded
+  // (e.g. empty-tool-call exhaustion) and must fall through to `failed` at
+  // #5 instead of re-entering the loop on a stale completed tool part.
   if (
+    !assistant.error &&
     input.parts.some(
       (part) =>
         part.type === "tool" &&

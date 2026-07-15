@@ -317,8 +317,16 @@ export const layer = Layer.effect(
       if (schema instanceof z.ZodObject) {
         const shape = schema.shape as Record<string, unknown>
         const keys = Object.keys(shape)
-        // Tool has required args if any shape key is NOT wrapped in ZodOptional.
-        const hasRequired = keys.some((k) => !(shape[k] instanceof z.ZodOptional))
+        // Tool has required args if any shape key is NOT wrapped in ZodOptional
+        // or in ZodDefault/ZodNullable (which also make a field non-required).
+        const hasRequired = keys.some((k) => {
+          let type = shape[k]
+          // Unwrap ZodDefault / ZodNullable wrappers to reach the inner type.
+          while (type instanceof z.ZodDefault || type instanceof z.ZodNullable) {
+            type = type.unwrap()
+          }
+          return !(type instanceof z.ZodOptional)
+        })
         toolHasRequiredArgs.set(def.id, hasRequired)
       } else {
         // Unknown schema shape — assume it accepts args (safe default).
@@ -2742,10 +2750,10 @@ NOTE: At any point in time through this workflow you should feel free to ask the
             input.assistant.finish === "content-filter" ||
             input.assistant.finish === "error"
           ) {
-            return false
+            return "skip" as const
           }
           const parts = MessageV2.parts(input.assistant.id)
-          if (!isEmptyStep(parts, { toolHasArgs })) return false
+          if (!isEmptyStep(parts, { toolHasArgs })) return "skip" as const
           // Discard the bad turn from request history: toModelMessages skips a
           // message whose info.error is set, so it can neither strand the
           // conversation on an assistant turn nor poison later context.
@@ -2758,7 +2766,7 @@ NOTE: At any point in time through this workflow you should feel free to ask the
               sessionID: input.assistant.sessionID,
               error: input.assistant.error,
             })
-            return false
+            return "break" as const
           }
           emptyToolCallRetries++
           yield* slog.info("retrying empty tool call", { attempt: emptyToolCallRetries })
@@ -2792,7 +2800,7 @@ NOTE: At any point in time through this workflow you should feel free to ask the
               "</system-reminder>",
             ].join("\n"),
           } satisfies MessageV2.TextPart)
-          return true
+          return "retry" as const
         })
 
 
@@ -2949,7 +2957,14 @@ NOTE: At any point in time through this workflow you should feel free to ask the
             // empty tool call triggers immediate retry — discard bad turn +
             // synthetic user message + continue. Catches empty tool calls
             // before classify routes them to "continue" (pending tool parts).
-            if (yield* autoRetryEmptyToolCall({ lastUser, assistant: lastAssistant })) continue
+            // On exhaustion, break explicitly to guarantee termination even if
+            // classify's step #1 would otherwise return "continue".
+            const emptyResult = yield* autoRetryEmptyToolCall({ lastUser, assistant: lastAssistant })
+            if (emptyResult === "retry") continue
+            if (emptyResult === "break") {
+              yield* slog.info("exiting loop", { classification: "empty-tool-exhausted" })
+              break
+            }
             if (classification.type === "think-only" || classification.type === "invalid") {
               const reason = classification.type === "invalid" ? classification.reason : "think-only"
               if (yield* autoContinueInvalidOutput({ lastUser, assistant: lastAssistant, reason })) continue
@@ -3506,7 +3521,9 @@ NOTE: At any point in time through this workflow you should feel free to ask the
               // Empty tool-call retry (fork branch). A single empty tool call
               // triggers immediate retry — discard bad turn + synthetic user
               // message + continue. On exhaustion, break.
-              if (yield* autoRetryEmptyToolCall({ lastUser, assistant: handle.message })) return "continue" as const
+              const emptyResult = yield* autoRetryEmptyToolCall({ lastUser, assistant: handle.message })
+              if (emptyResult === "retry") return "continue" as const
+              if (emptyResult === "break") return "break" as const
 
               const forkClassification = classifyAssistantStep({
                 phase: "after-process",
@@ -3729,7 +3746,9 @@ NOTE: At any point in time through this workflow you should feel free to ask the
             // Empty tool-call retry (main branch). A single empty tool call
             // triggers immediate retry — discard bad turn + synthetic user
             // message + continue. On exhaustion, break.
-            if (yield* autoRetryEmptyToolCall({ lastUser, assistant: handle.message })) return "continue" as const
+            const emptyResult = yield* autoRetryEmptyToolCall({ lastUser, assistant: handle.message })
+            if (emptyResult === "retry") return "continue" as const
+            if (emptyResult === "break") return "break" as const
 
             const classification = classifyAssistantStep({
               phase: "after-process",
