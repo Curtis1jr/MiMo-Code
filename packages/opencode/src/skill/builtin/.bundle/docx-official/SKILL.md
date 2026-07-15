@@ -38,6 +38,8 @@ python3 -m pip install --upgrade python-docx lxml
 #   Poppler   (for pdf → image, QA loop):   brew install poppler
 ```
 
+Alternatively, if this skill lives in a persistent workspace you can `uv init` a project, `uv add python-docx lxml`, and run scripts with `uv run scripts/...` from the project root — this gives you a lockfile and reproducible environment.
+
 All scripts here use the standard library plus `python-docx`. No proprietary dependencies.
 
 ## Common commands

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # /// script
 # requires-python = ">=3.10"
-# dependencies = ["lxml"]
+# dependencies = ["lxml>=4.9"]
 # ///
 """Explode a `.docx` archive into a browsable folder of pretty-printed XML.
 

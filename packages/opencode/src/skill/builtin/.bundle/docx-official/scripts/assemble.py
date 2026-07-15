@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # /// script
 # requires-python = ">=3.10"
-# dependencies = ["lxml"]
+# dependencies = ["lxml>=4.9"]
 # ///
 """Assemble an exploded `.docx` directory tree back into a `.docx`.
 

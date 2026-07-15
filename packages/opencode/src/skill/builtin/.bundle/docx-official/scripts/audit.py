@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # /// script
 # requires-python = ">=3.10"
-# dependencies = ["python-docx", "lxml"]
+# dependencies = ["python-docx>=1.0", "lxml>=4.9"]
 # ///
 """Report-style well-formedness inspection of a `.docx` file.
 
