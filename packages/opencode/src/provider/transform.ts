@@ -456,22 +456,17 @@ function applyCaching(msgs: ModelMessage[], model: Provider.Model): ModelMessage
   return msgs
 }
 
-// Normalize msg.content to always be an array of parts. The ModelMessage type
-// allows `content: string | Array<...>`, but some code paths (provider adapters,
-// AI SDK internals) call `.map()` on content assuming it's an array. A non-array
-// (string, object, undefined) at that point produces "j.map is not a function".
-// This guard runs once at the pipeline entry so all downstream transforms can
-// safely iterate over content.
+// Minimal crash guard: ensure msg.content is never a non-string non-array value
+// (object, undefined, null) that would blow up downstream `.map()` calls.
+// Strings are valid ModelMessage content (the AI SDK accepts content: string |
+// Array) and are left untouched. Only genuinely-invalid types are normalized
+// to a safe empty array so every downstream path can safely call `.map()`.
 function normalizeContentArray(msgs: ModelMessage[]): ModelMessage[] {
   return msgs.map((msg) => {
-    if (Array.isArray(msg.content)) return msg
-    if (typeof msg.content === "string") {
-      return msg.content === ""
-        ? msg
-        : { ...msg, content: [{ type: "text" as const, text: msg.content }] } as ModelMessage
-    }
-    // object / undefined / null — wrap in a text placeholder so .map is safe
-    return { ...msg, content: [{ type: "text" as const, text: "" }] } as ModelMessage
+    if (typeof msg.content === "string" || Array.isArray(msg.content)) return msg
+    // object / undefined / null — not a valid ModelMessage content shape;
+    // wrap in an empty array so .map() downstream never throws.
+    return { ...msg, content: [] } as ModelMessage
   })
 }
 
@@ -775,8 +770,8 @@ function mapProviderOptions(
 }
 
 export function message(msgs: ModelMessage[], model: Provider.Model, options: Record<string, unknown>) {
-  // Ensure every msg.content is an array before any transform touches it.
-  // This prevents "j.map is not a function" when content is a string/object.
+  // Guard against genuinely-invalid content (object/undefined/null) that would
+  // blow up downstream .map() calls. Strings are valid and left untouched.
   msgs = normalizeContentArray(msgs)
   msgs = unsupportedParts(msgs, model)
   msgs = limitImages(msgs, model)

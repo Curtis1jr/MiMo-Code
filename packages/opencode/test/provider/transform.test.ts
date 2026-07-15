@@ -1547,9 +1547,10 @@ describe("ProviderTransform.message - anthropic empty content filtering", () => 
     const result = ProviderTransform.message(msgs, anthropicModel, {})
 
     expect(result).toHaveLength(2)
-    // String content is normalized to [{ type: "text", text: "..." }]
-    expect(result[0].content).toEqual([{ type: "text", text: "Hello" }])
-    expect(result[1].content).toEqual([{ type: "text", text: "World" }])
+    // String content is left unchanged by the crash guard (strings are valid
+    // ModelMessage content — the AI SDK handles them natively).
+    expect(result[0].content).toBe("Hello")
+    expect(result[1].content).toBe("World")
   })
 
   test("filters out empty text parts from array content", () => {
@@ -1608,8 +1609,8 @@ describe("ProviderTransform.message - anthropic empty content filtering", () => 
     const result = ProviderTransform.message(msgs, anthropicModel, {})
 
     expect(result).toHaveLength(2)
-    expect(result[0].content).toEqual([{ type: "text", text: "Hello" }])
-    expect(result[1].content).toEqual([{ type: "text", text: "World" }])
+    expect(result[0].content).toBe("Hello")
+    expect(result[1].content).toBe("World")
   })
 
   test("keeps non-text/reasoning parts even if text parts are empty", () => {
@@ -1687,10 +1688,10 @@ describe("ProviderTransform.message - anthropic empty content filtering", () => 
     const result = ProviderTransform.message(msgs, bedrockModel, {})
 
     expect(result).toHaveLength(3)
-    expect(result[0].content).toEqual([{ type: "text", text: "Hello" }])
+    expect(result[0].content).toBe("Hello")
     expect(result[1].content).toHaveLength(1)
     expect(result[1].content[0]).toEqual({ type: "text", text: "Answer" })
-    expect(result[2].content).toEqual([{ type: "text", text: "Thanks" }])
+    expect(result[2].content).toBe("Thanks")
   })
 
   test("does not filter for non-anthropic providers", () => {
@@ -2730,10 +2731,9 @@ describe("ProviderTransform.message - cache control on gateway", () => {
 
     const result = ProviderTransform.message(msgs, model, {}) as any[]
 
-    // After content normalization, string content becomes an array, so cache
-    // markers are applied at the content level for non-Anthropic/Bedrock providers.
-    const lastSystemContent = result[0].content[result[0].content.length - 1]
-    expect(lastSystemContent.providerOptions).toEqual({
+    // String content is left as-is (not normalized to array), so cache markers
+    // are applied at the message level — the pre-existing behavior.
+    expect(result[0].providerOptions).toEqual({
       anthropic: {
         cacheControl: {
           type: "ephemeral",
@@ -4338,42 +4338,47 @@ describe("ProviderTransform.message - non-array content guard (j.map is not a fu
     headers: {},
   } as any
 
-  test("string content on user message is normalized to array", () => {
+  test("string content is left unchanged (strings are valid ModelMessage content)", () => {
     const msgs = [{ role: "user", content: "Hello" }] as any[]
     const result = ProviderTransform.message(msgs, genericModel, {})
     expect(result).toHaveLength(1)
-    expect(Array.isArray(result[0].content)).toBe(true)
-    expect(result[0].content).toEqual([{ type: "text", text: "Hello" }])
+    expect(result[0].content).toBe("Hello")
   })
 
-  test("empty string content on assistant message is normalized", () => {
+  test("empty string content is left unchanged", () => {
     const msgs = [
       { role: "assistant", content: "" },
       { role: "user", content: "next" },
     ] as any[]
     const result = ProviderTransform.message(msgs, anthropicModel, {})
-    expect(result.every((m) => Array.isArray(m.content) || typeof m.content === "string")).toBe(true)
+    // The empty string assistant gets dropped by normalizeMessages (anthropic
+    // filtering), so only the user message remains.
+    expect(result).toHaveLength(1)
+    expect(result[0].content).toBe("next")
   })
 
-  test("undefined content is normalized to empty array", () => {
+  test("undefined content is normalized to empty array (crash guard)", () => {
     const msgs = [{ role: "user", content: undefined }] as any[]
     const result = ProviderTransform.message(msgs, genericModel, {})
     expect(result).toHaveLength(1)
     expect(Array.isArray(result[0].content)).toBe(true)
+    expect(result[0].content).toEqual([])
   })
 
-  test("null content is normalized to empty array", () => {
+  test("null content is normalized to empty array (crash guard)", () => {
     const msgs = [{ role: "user", content: null }] as any[]
     const result = ProviderTransform.message(msgs, genericModel, {})
     expect(result).toHaveLength(1)
     expect(Array.isArray(result[0].content)).toBe(true)
+    expect(result[0].content).toEqual([])
   })
 
-  test("object content is normalized to array", () => {
+  test("object content is normalized to empty array (crash guard)", () => {
     const msgs = [{ role: "user", content: { type: "text", text: "oops" } }] as any[]
     const result = ProviderTransform.message(msgs, genericModel, {})
     expect(result).toHaveLength(1)
     expect(Array.isArray(result[0].content)).toBe(true)
+    expect(result[0].content).toEqual([])
   })
 
   test("already-array content passes through unchanged", () => {
@@ -4383,25 +4388,24 @@ describe("ProviderTransform.message - non-array content guard (j.map is not a fu
     expect(result[0].content).toEqual([{ type: "text", text: "Hello" }])
   })
 
-  test("mixed: string user + array assistant both survive", () => {
+  test("mixed: string user + array assistant + undefined all survive", () => {
     const msgs = [
       { role: "user", content: "Hello" },
       { role: "assistant", content: [{ type: "text", text: "Hi!" }] },
       { role: "user", content: undefined },
     ] as any[]
     const result = ProviderTransform.message(msgs, genericModel, {})
+    // String user and array assistant survive; undefined user gets []
     expect(result.length).toBeGreaterThanOrEqual(2)
-    result.forEach((m) => {
-      expect(Array.isArray(m.content)).toBe(true)
-    })
+    expect(result[0].content).toBe("Hello")
+    expect(Array.isArray(result[1].content)).toBe(true)
   })
 
-  test("non-array content does not throw (the original j.map bug)", () => {
+  test("object/undefined/null content does not throw (the original j.map bug)", () => {
     const msgs = [
-      { role: "user", content: "test" },
-      { role: "assistant", content: "response" },
       { role: "user", content: { some: "object" } },
       { role: "assistant", content: undefined },
+      { role: "user", content: null },
     ] as any[]
     expect(() => ProviderTransform.message(msgs, genericModel, {})).not.toThrow()
   })
