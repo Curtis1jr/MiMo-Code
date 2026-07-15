@@ -316,21 +316,20 @@ shade_paragraph(p, "FFF4CE")
 
 ```python
 from lxml import etree
-from docx.oxml.ns import qn
 
 doc = Document()
 
-# --- patch theme to use safe fonts ---
+# --- patch theme font definitions ---
 theme_rel = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme"
 theme_part = doc.part.part_related_by(theme_rel)
 theme_xml = etree.fromstring(theme_part.blob)
 
-for elem in theme_xml.iter():
-    tf = elem.get("typeface", "")
-    if tf in ("Cambria", "Calibri"):
-        elem.set("typeface", "Times New Roman")    # or your preferred Latin font
-    elif elem.tag.endswith("}font") and elem.get("script", "") in ("Hans", "Hant", "Jpan", "Hang"):
-        elem.set("typeface", "SimSun")             # or your preferred CJK font
+ns = {"a": "http://schemas.openxmlformats.org/drawingml/2006/main"}
+for latin in theme_xml.xpath("//a:majorFont/a:latin | //a:minorFont/a:latin", namespaces=ns):
+    latin.set("typeface", "Times New Roman")       # or your preferred Latin font
+for font in theme_xml.xpath("//a:majorFont/a:font | //a:minorFont/a:font", namespaces=ns):
+    if font.get("script", "") in ("Hans", "Hant", "Jpan", "Hang"):
+        font.set("typeface", "SimSun")             # or your preferred CJK font
 
 theme_part._blob = etree.tostring(theme_xml, xml_declaration=True, encoding="UTF-8", standalone=True)
 
