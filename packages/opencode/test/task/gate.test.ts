@@ -65,8 +65,9 @@ describe("TaskGate.decide", () => {
         expect(result.incompleteTasks).toEqual(["T1"])
         expect(result.reentryText).toContain("<system-reminder>")
         expect(result.reentryText).toContain("T1 (open): Refactor parser")
-        expect(result.reentryText).toContain("`task done <id> <summary>`")
-        expect(result.reentryText).toContain("Then continue or respond.")
+        expect(result.reentryText).toContain("`task done <id>")
+        expect(result.reentryText).toContain("`question` tool")
+        expect(result.reentryText).toContain("Do NOT answer your own questions")
         expect(result.reentryText).not.toContain("Status")
         // Main-mode headline must NOT claim ownership: owner=undefined picks
         // up subagent-orphaned tasks the main agent didn't create. Saying

@@ -54,16 +54,29 @@ const buildReentryText = (
     mode === "subagent"
       ? "You are about to finish, but these tasks you own are still unfinished:"
       : "You are about to finish, but these tasks in this session are still unfinished:"
-  const closingLine =
-    mode === "subagent"
-      ? "Then re-emit your final message starting with the **Status**/**Summary** header."
-      : "Then continue or respond."
+  if (mode === "subagent") {
+    return [
+      "<system-reminder>",
+      headline,
+      ...incomplete.map((t) => `- ${t.id} (${t.status}): ${t.summary}`),
+      "For EACH: complete the work then `task done <id> <summary>`, or `task abandon <id> <reason>` if it is genuinely not needed.",
+      "Then re-emit your final message starting with the **Status**/**Summary** header.",
+      "</system-reminder>",
+    ].join("\n")
+  }
   return [
     "<system-reminder>",
     headline,
     ...incomplete.map((t) => `- ${t.id} (${t.status}): ${t.summary}`),
-    "For EACH: complete the work then `task done <id> <summary>`, or `task abandon <id> <reason>` if it is genuinely not needed.",
-    closingLine,
+    "",
+    "For each task, pick the appropriate action:",
+    "- If you need user input to proceed: use the `question` tool to ask — it supports structured choices, open-ended free-text (pass empty options), and recommended options. Do NOT end your turn with an unanswered natural-language question.",
+    "- If the work is incomplete and you can continue without user input: continue working, then `task done <id> \"<summary>\"` when finished",
+    "- If already complete: `task done <id> \"<summary>\"`",
+    "- If blocked on something external: `task block <id> \"<reason>\"`",
+    "- If no longer needed: `task abandon <id> \"<reason>\"`",
+    "",
+    "Do NOT answer your own questions or assume user intent. If you asked something, get the answer via `question` before proceeding.",
     "</system-reminder>",
   ].join("\n")
 }
