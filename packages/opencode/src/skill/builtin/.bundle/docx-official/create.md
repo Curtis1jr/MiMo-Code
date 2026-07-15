@@ -320,9 +320,9 @@ python your_generator.py --out out/report.docx --data data.json
 Then run the four QA steps from `SKILL.md` — the ones you must never skip:
 
 ```bash
-python -c "import docx; docx.Document('out/report.docx')"
-python scripts/extract_text.py out/report.docx | grep -Ei "TODO|TBD|\{\{"
-python scripts/render_pdf.py out/report.docx
+uv run python -c "import docx; docx.Document('out/report.docx')"
+uv run scripts/extract_text.py out/report.docx | grep -Ei "TODO|TBD|\{\{"
+uv run scripts/render_pdf.py out/report.docx
 ```
 
 If the import check raises or the grep matches anything, treat it as a build
