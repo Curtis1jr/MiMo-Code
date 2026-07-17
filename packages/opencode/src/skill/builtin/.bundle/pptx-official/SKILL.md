@@ -46,6 +46,8 @@ curl -fsSL https://bun.sh/install | bash
 # Windows: powershell -c "irm bun.sh/install.ps1|iex"
 ```
 
+Only if the user explicitly refuses `uv` / `bun`, substitute `pip` (in a venv you manage yourself) for `uv`, and `npm`/`pnpm` + `npx tsx` for `bun` — everything else in this skill stays the same.
+
 ### Python (uv)
 
 Python dependencies are managed by `uv`. Do not use `pip` directly.
@@ -170,15 +172,29 @@ of each file for its full CLI options.
 
 A live preview server is available for real-time slide feedback.
 **Not started by default.** When multi-slide work begins, ask the user
-if they want live preview enabled. If yes:
+if they want live preview enabled.
+
+**Only offer this in a pure command-line environment.** This server is
+for the MiMoCode CLI. If you are running inside a host that embeds
+MiMoCode via the SDK — a web UI, a desktop app, an IDE plugin, etc. —
+that host almost certainly has its own native preview / file-open
+mechanism; use it instead and do NOT start this server.
+
+If yes, and this is a CLI environment:
 
 ```bash
+# `scripts/preview.ts` lives in this skill's bundle directory, not in
+# your cwd. Prefix it with the absolute path shown in this skill's
+# location header (the folder that contains SKILL.md) — refer to it
+# as <SKILL_DIR> below. The .pptx path can also sit anywhere; if it
+# is not under your cwd, pass an absolute path too.
+
 # Start (spawns background server, prints URL, exits immediately)
-bun run scripts/preview.ts output.pptx
-bun run scripts/preview.ts output.pptx --port 5000
+bun run <SKILL_DIR>/scripts/preview.ts /path/to/output.pptx
+bun run <SKILL_DIR>/scripts/preview.ts /path/to/output.pptx --port 5000
 
 # Stop
-bun run scripts/preview.ts --stop output.pptx
+bun run <SKILL_DIR>/scripts/preview.ts --stop /path/to/output.pptx
 ```
 
 If the server is already running, `preview.ts` detects this via PID file
