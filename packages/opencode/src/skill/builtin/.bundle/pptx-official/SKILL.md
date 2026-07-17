@@ -186,8 +186,7 @@ If yes, and this is a CLI environment:
 # `scripts/preview.ts` lives in this skill's bundle directory, not in
 # your cwd. Prefix it with the absolute path shown in this skill's
 # location header (the folder that contains SKILL.md) — refer to it
-# as <SKILL_DIR> below. The .pptx path can also sit anywhere; if it
-# is not under your cwd, pass an absolute path too.
+# as <SKILL_DIR> below.
 
 # Start (spawns background server, prints URL, exits immediately)
 bun run <SKILL_DIR>/scripts/preview.ts /path/to/output.pptx

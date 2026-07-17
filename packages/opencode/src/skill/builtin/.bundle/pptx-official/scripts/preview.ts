@@ -12,8 +12,7 @@
  *
  * PATHS: this script sits in the skill's bundle directory, not
  * necessarily in your cwd. Invoke with the absolute path to it
- * (<SKILL_DIR>/scripts/preview.ts) and pass the .pptx by absolute
- * path too if it doesn't live under your cwd.
+ * (<SKILL_DIR>/scripts/preview.ts).
  *
  * Usage (substitute <SKILL_DIR> with this skill's bundle dir):
  *   bun run <SKILL_DIR>/scripts/preview.ts /path/to/output.pptx              # start, default port 4200
@@ -81,8 +80,7 @@ const source = positionals[0]
 if (!source) {
   console.error("Usage: bun run <SKILL_DIR>/scripts/preview.ts /path/to/file.pptx [--port N]")
   console.error("       bun run <SKILL_DIR>/scripts/preview.ts --stop /path/to/file.pptx")
-  console.error("(<SKILL_DIR> = absolute path of this skill's bundle — the folder containing")
-  console.error(" SKILL.md, NOT your cwd. Pass the .pptx by absolute path unless it's under cwd.)")
+  console.error("(<SKILL_DIR> is the absolute path of this skill's bundle — the folder containing SKILL.md, NOT your cwd.)")
   process.exit(2)
 }
 

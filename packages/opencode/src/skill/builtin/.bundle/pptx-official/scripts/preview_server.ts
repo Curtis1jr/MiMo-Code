@@ -11,8 +11,7 @@
  * the SDK should use their own native preview mechanism instead.
  *
  * PATHS: this script sits in the skill's bundle directory. Invoke via
- * the absolute path (<SKILL_DIR>/scripts/preview_server.ts) and pass
- * the .pptx by absolute path unless it lives under your cwd.
+ * the absolute path (<SKILL_DIR>/scripts/preview_server.ts).
  *
  * Usage:
  *   bun run <SKILL_DIR>/scripts/preview_server.ts /path/to/output.pptx --port 4200
