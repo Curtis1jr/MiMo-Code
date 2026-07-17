@@ -80,7 +80,6 @@ const source = positionals[0]
 if (!source) {
   console.error("Usage: bun run <SKILL_DIR>/scripts/preview.ts /path/to/file.pptx [--port N]")
   console.error("       bun run <SKILL_DIR>/scripts/preview.ts --stop /path/to/file.pptx")
-  console.error("(<SKILL_DIR> is the absolute path of this skill's bundle — the folder containing SKILL.md, NOT your cwd.)")
   process.exit(2)
 }
 

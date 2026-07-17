@@ -10,8 +10,9 @@
  * SCOPE: for the MiMoCode CLI only. GUI hosts embedding MiMoCode via
  * the SDK should use their own native preview mechanism instead.
  *
- * PATHS: this script sits in the skill's bundle directory. Invoke via
- * the absolute path (<SKILL_DIR>/scripts/preview_server.ts).
+ * PATHS: this script sits in the skill's bundle directory, not
+ * necessarily in your cwd. Invoke via the absolute path
+ * (<SKILL_DIR>/scripts/preview_server.ts).
  *
  * Usage:
  *   bun run <SKILL_DIR>/scripts/preview_server.ts /path/to/output.pptx --port 4200
