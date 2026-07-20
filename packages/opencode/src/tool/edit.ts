@@ -19,7 +19,7 @@ import { SessionCwd } from "./session-cwd"
 import { Snapshot } from "@/snapshot"
 import { assertWriteAllowed, askEditUnlessMemory } from "./external-directory"
 import { AppFileSystem } from "@mimo-ai/shared/filesystem"
-import { isProtectedMemoryPath, guardedEdit, guardedRead } from "./shared-guard"
+import { isProtectedMemoryPath, isProjectionPath, isProjectionWriteBlocked, PROJECTION_WRITE_ERROR, guardedEdit, guardedRead } from "./shared-guard"
 
 function normalizeLineEndings(text: string): string {
   return text.replaceAll("\r\n", "\n")
@@ -80,7 +80,12 @@ export const EditTool = Tool.define(
           yield* assertWriteAllowed(ctx, filePath)
 
           // Phase 0 shared-memory guard: protected paths use flock + atomic write + revision tracking
-          if (isProtectedMemoryPath(filePath)) {
+          if (isProjectionPath(filePath)) {
+            // Phase 4: projection write block — generic file tools cannot mutate projections
+            if (isProjectionWriteBlocked()) {
+              throw new Error(PROJECTION_WRITE_ERROR)
+            }
+            // Migration/recovery mode: allow guarded write
             const readResult = yield* Effect.promise(() => guardedRead(filePath))
             const result = yield* Effect.promise(() =>
               guardedEdit(

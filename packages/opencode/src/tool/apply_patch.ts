@@ -10,7 +10,7 @@ import { Patch } from "../patch"
 import { createTwoFilesPatch, diffLines } from "diff"
 import { assertWriteAllowed } from "./external-directory"
 import { trimDiff } from "./edit"
-import { isProtectedMemoryPath, guardedWrite, guardedRead } from "./shared-guard"
+import { isProtectedMemoryPath, isProjectionPath, isProjectionWriteBlocked, PROJECTION_WRITE_ERROR, guardedWrite, guardedRead } from "./shared-guard"
 import { LSP } from "../lsp"
 import { AppFileSystem } from "@mimo-ai/shared/filesystem"
 import DESCRIPTION from "./apply_patch.txt"
@@ -32,7 +32,12 @@ export const ApplyPatchTool = Tool.define(
 
     // Helper: guarded write for protected memory paths, fall back to afs.writeWithDirs
     const writeContent = Effect.fn("ApplyPatchTool.writeContent")(function* (filePath: string, content: string) {
-      if (isProtectedMemoryPath(filePath)) {
+      if (isProjectionPath(filePath)) {
+        // Phase 4: projection write block — generic file tools cannot mutate projections
+        if (isProjectionWriteBlocked()) {
+          return yield* Effect.fail(new Error(PROJECTION_WRITE_ERROR))
+        }
+        // Migration/recovery mode: allow guarded write
         const readResult = yield* Effect.promise(() => guardedRead(filePath))
         const result = yield* Effect.promise(() => guardedWrite(filePath, content, readResult.exists ? readResult.hash : null))
         if (result.status === "stale_base") {

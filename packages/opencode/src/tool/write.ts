@@ -14,7 +14,7 @@ import { Instance } from "../project/instance"
 import { SessionCwd } from "./session-cwd"
 import { trimDiff } from "./edit"
 import { assertWriteAllowed, askEditUnlessMemory } from "./external-directory"
-import { isProtectedMemoryPath, guardedWrite, guardedRead } from "./shared-guard"
+import { isProtectedMemoryPath, isProjectionPath, isProjectionWriteBlocked, PROJECTION_WRITE_ERROR, guardedWrite, guardedRead } from "./shared-guard"
 
 const MAX_PROJECT_DIAGNOSTICS_FILES = 5
 
@@ -49,7 +49,12 @@ export const WriteTool = Tool.define(
           })
 
           // Phase 0 shared-memory guard: protected paths use flock + atomic write + revision tracking
-          if (isProtectedMemoryPath(filepath)) {
+          if (isProjectionPath(filepath)) {
+            // Phase 4: projection write block — generic file tools cannot mutate projections
+            if (isProjectionWriteBlocked()) {
+              throw new Error(PROJECTION_WRITE_ERROR)
+            }
+            // Migration/recovery mode: allow guarded write
             const readResult = yield* Effect.promise(() => guardedRead(filepath))
             const result = yield* Effect.promise(() =>
               guardedWrite(filepath, params.content, readResult.exists ? readResult.hash : null),

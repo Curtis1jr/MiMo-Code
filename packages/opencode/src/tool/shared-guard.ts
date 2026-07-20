@@ -80,6 +80,47 @@ export function isProtectedMemoryPath(filePath: string): boolean {
   return false
 }
 
+/**
+ * Phase 4 projection guard: returns true for files that are generated
+ * projections from the canonical event ledger. These files MUST NOT be
+ * directly mutated by generic file tools (Edit, Write, apply_patch).
+ *
+ * All projection writes must go through the MemoryRecorder as typed events.
+ * This is the structural prohibition that gate 5 requires.
+ */
+export function isProjectionPath(filePath: string): boolean {
+  // All protected memory paths are also projection paths
+  return isProtectedMemoryPath(filePath)
+}
+
+/**
+ * Assert that a write to a projection path is allowed.
+ *
+ * In Phase 4+, this always throws because projection writes must go through
+ * the MemoryRecorder. The only exception is migration/recovery mode, which
+ * is signaled by an environment variable.
+ *
+ * Returns true if write is blocked (caller should throw).
+ * Returns false if write is allowed (migration/recovery mode).
+ */
+export function isProjectionWriteBlocked(): boolean {
+  // Migration/recovery mode bypasses the block
+  if (process.env.MIMOCODE_MIGRATION_MODE === "1") {
+    return false
+  }
+  return true
+}
+
+export const PROJECTION_WRITE_ERROR = [
+  "DIRECT PROJECTION WRITE BLOCKED",
+  "",
+  "MEMORY.md, checkpoint.md, and spillover files are generated projections.",
+  "All shared-memory changes must be submitted as typed events through the MemoryRecorder.",
+  "",
+  "To write memory: use the memory recorder API.",
+  "To bypass for migration: set MIMOCODE_MIGRATION_MODE=1",
+].join("\n")
+
 // ---------------------------------------------------------------------------
 // Revision tracking
 // ---------------------------------------------------------------------------
