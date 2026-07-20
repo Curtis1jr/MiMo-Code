@@ -94,6 +94,19 @@ An isolated child's commits live on its own `mimocode/<...>` branch in its workt
 - Preview conflicts with `git merge-tree`, then `git merge <branch>` (or cherry-pick) into the target branch.
 - Find a child's branch via `git worktree list` or `git branch --list 'mimocode/*'`.
 
+### Git safety for isolated children (critical)
+
+Git worktrees share the same `.git` object store and ref namespace. This means:
+- A child running `git rebase`, `git merge`, or `git checkout` in its worktree CAN affect refs visible to the main checkout (e.g. `refs/heads/main`).
+- A child's `git rebase main` operates on the shared ref store and can move the main checkout's HEAD.
+- All `mimocode/*` branches are shared across worktrees — a child's ref mutations affect every worktree.
+
+**Rules you MUST enforce in every isolated child's task description:**
+1. A child MUST NOT run `git rebase`, `git merge`, or `git checkout` on ANY branch other than its own `mimocode/<name>` branch. These operations mutate shared refs and can corrupt the main checkout.
+2. A child SHOULD use `git commit` and `git push` on its own branch — these are safe (push targets remote, commit advances only the child's branch ref).
+3. ALL integration (merge, cherry-pick, rebase of child branches into the target) is YOUR job as orchestrator — never delegate it to a child.
+4. When dispatching an isolated child, INCLUDE this instruction in the child's task: "You are on branch <branch> in an isolated worktree. Do NOT run git rebase, git merge, or git checkout on any branch other than your own. Commit and push only on your branch. The orchestrator will handle integration."
+
 ## Finished sessions stay resumable — mirror how a human treats a session (governing principle)
 
 Your interaction with a child session must be CONSISTENT with how a HUMAN interacts with a session. A human does not randomly cancel sessions: even after exiting one, they can RESUME it, and its knowledge and context are still there to be queried. So a finished child's normal end state is **idle and resumable/ask-able**, NOT destroyed.

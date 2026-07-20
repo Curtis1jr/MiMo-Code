@@ -506,6 +506,25 @@ describe("session tool", () => {
     ),
   )
 
+  it.live("create --isolate output warns about shared ref namespace", () =>
+    provideTmpdirInstance((dir) =>
+      Effect.gen(function* () {
+        const sessions = yield* Session.Service
+        const parent = yield* sessions.create({ title: "Parent" })
+        const tool = yield* (yield* SessionTool).init()
+        const res = yield* tool.execute(
+          { operation: { action: "create", task: "x", mode: "build", dir, isolate: true } },
+          ctx(parent.id),
+        )
+        // The output must warn about shared refs to prevent children from
+        // running git rebase/merge/checkout that could affect the main checkout.
+        expect(res.output).toContain("share refs")
+        expect(res.output).toContain("git rebase")
+      }),
+      { git: true },
+    ),
+  )
+
   it.live("create --dir without isolate runs the child in that directory (shared)", () =>
     provideTmpdirInstance((dir) =>
       Effect.gen(function* () {

@@ -733,7 +733,9 @@ export const SessionTool = Tool.define<typeof parameters, Metadata, Deps>(
           output:
             `Created child session ${result.sessionID} (mode: ${op.mode ?? "build"}) in ${effectiveDir}.` +
             (op.topic ? ` Tagged with topic '${op.topic}' for reuse.` : ``) +
-            (op.isolate && !isolateNotice ? ` Isolated in its own worktree.` : isolateNotice) +
+            (op.isolate && !isolateNotice
+              ? ` Isolated in its own worktree. IMPORTANT: Git worktrees share refs — the child MUST NOT run git rebase/merge/checkout on branches it doesn't own. It may commit+push on its own branch only.`
+              : isolateNotice) +
             ` Running in the background.`,
           metadata: { sessionID: result.sessionID } as Metadata,
         }
