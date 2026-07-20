@@ -2644,48 +2644,41 @@ NOTE: At any point in time through this workflow you should feel free to ask the
         // Leaked tool-call marker retry. The provider leaks a tool-call marker
         // into assistant text — a junk text part like "call:", "code",
         // or a bare tool name immediately before the real structured tool call.
-        // The bad assistant turn is DISCARDED from history (error-tagged) and
-        // a synthetic user turn re-drives generation. On exhaustion a
-        // persistent <tool-call-format> reminder is injected to suppress
-        // future leaks. Returns true => continue; false => break.
+        // On EVERY outcome (retry AND exhaustion) the bad assistant turn is
+        // DISCARDED from history (error-tagged with LeakedToolcallMarkerError so
+        // toModelMessages skips it — see message-v2.ts). While retries remain, a
+        // synthetic user turn re-drives generation; on exhaustion the loop just
+        // BREAKS — no persistent reminder is injected. This mirrors the sibling
+        // exhaustion guards (autoRetryTextToolCall, autoRetryStructuredOutput):
+        // discard the junk + surface an error + break. A future user turn that
+        // leaks again is a fresh runLoop that re-detects and re-retries on its
+        // own, so no cross-turn reminder is needed (and a permanently-replayed
+        // one would be a context tax that a model leaking 3× in a row is
+        // unlikely to be corrected by anyway). Returns true => continue;
+        // false => break.
         const autoRetryLeakedToolcallMarker = Effect.fn("SessionPrompt.autoRetryLeakedToolcallMarker")(function* (input: {
           lastUser: MessageV2.User
           assistant: MessageV2.Assistant
         }) {
           if (input.assistant.error) return false
-          if (leakedToolcallMarkerRetries >= LEAKED_TOOLCALL_MARKER_RETRY_LIMIT) {
-            // Exhausted — inject a persistent suppress reminder so the model
-            // stops emitting leaked tool-call marker junk in future steps.
-            const suppressMsg = yield* sessions.updateMessage({
-              id: MessageID.ascending(),
-              role: "user" as const,
-              sessionID: input.lastUser.sessionID,
-              agentID: input.lastUser.agentID,
-              agent: input.lastUser.agent,
-              model: input.lastUser.model,
-              tools: input.lastUser.tools,
-              format: input.lastUser.format,
-              time: { created: Date.now() },
-            })
-            yield* sessions.updatePart({
-              id: PartID.ascending(),
-              messageID: suppressMsg.id,
-              sessionID: suppressMsg.sessionID,
-              type: "text",
-              synthetic: true,
-              text: [
-                "<tool-call-format>",
-                "When you invoke a tool, emit ONLY the structured tool call itself. NEVER write any preamble text announcing the call — do not output \"call:\", \"code\", the tool name on its own line, or any label/marker before the tool call. These preambles are protocol noise: they render as duplicated junk to the user and compound across steps. Your assistant text should contain ONLY substantive content for the user. If you have nothing substantive to say before a tool call, emit the tool call with NO leading text at all. One \"call:\" or \"code\" line before a tool call is already a bug — never repeat it.",
-                "</tool-call-format>",
-              ].join("\n"),
-            } satisfies MessageV2.TextPart)
-            return false
-          }
-          // Tag the bad turn as discarded from history.
+          // Tag the bad turn as discarded from history — on the retry path AND
+          // the exhaustion path. Without this on exhaustion the very junk text
+          // the guard exists to remove (the Nth "call:"/"code"/bare-name step)
+          // would stay in conversation history and re-feed the leak.
           input.assistant.error = new MessageV2.LeakedToolcallMarkerError({
             message: "Provider leaked a tool-call marker into assistant text.",
           }).toObject()
           yield* sessions.updateMessage(input.assistant)
+          if (leakedToolcallMarkerRetries >= LEAKED_TOOLCALL_MARKER_RETRY_LIMIT) {
+            // Exhausted: the junk step is now discarded; surface the error and
+            // break — same shape as autoRetryTextToolCall's exhaustion path.
+            yield* slog.info("leaked tool-call marker retries exhausted", { attempt: leakedToolcallMarkerRetries })
+            yield* bus.publish(Session.Event.Error, {
+              sessionID: input.assistant.sessionID,
+              error: input.assistant.error,
+            })
+            return false
+          }
           leakedToolcallMarkerRetries++
           yield* slog.info("retrying leaked tool-call marker", { attempt: leakedToolcallMarkerRetries })
           const msg = yield* sessions.updateMessage({

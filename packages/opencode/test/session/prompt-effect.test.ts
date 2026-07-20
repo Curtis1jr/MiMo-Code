@@ -740,6 +740,98 @@ mcpIt.live("MCP isError becomes a tool error without losing standard result fiel
   ),
 )
 
+mcpIt.live(
+  "leaked tool-call marker: exhaustion discards the junk step and injects NO persistent <tool-call-format> reminder",
+  () =>
+    provideTmpdirServer(
+      Effect.fnUntraced(function* ({ llm }) {
+        const prompt = yield* SessionPrompt.Service
+        const sessions = yield* Session.Service
+        const session = yield* sessions.create({
+          title: "Pinned",
+          permission: [{ permission: "*", pattern: "*", action: "allow" }],
+        })
+
+        const FORMAT = "<tool-call-format>"
+        // A leaked step: a bare "call:" preamble text part immediately before a
+        // real (completed) structured tool call. This is what classify flags as
+        // leaked-toolcall-marker.
+        const leaked = () => reply().text("call:").tool("mcp_success", {}).item()
+
+        // Turn 1: leak on every step. Retry limit is 2
+        // (MIMOCODE_LEAKED_TOOLCALL_MARKER_RETRY_LIMIT), so the guard retries
+        // twice then exhausts, discarding the junk 3rd step and breaking. Queue
+        // several leaks so the loop can't run past the retry budget.
+        yield* prompt.prompt({
+          sessionID: session.id,
+          agent: "build",
+          noReply: true,
+          parts: [{ type: "text", text: "hello" }],
+        })
+        yield* llm.push(leaked(), leaked(), leaked(), leaked(), leaked())
+        yield* prompt.loop({ sessionID: session.id })
+
+        const afterExhaust = yield* MessageV2.filterCompactedEffect(session.id)
+
+        // Defect 3: EVERY leaked assistant step — including the exhausting one on
+        // the emit/break path — is error-tagged LeakedToolcallMarkerError, so it
+        // is discarded from request history. The junk "call:" text the guard
+        // exists to remove must not survive as a live (non-discarded) turn.
+        const leakedAssistants = afterExhaust.filter(
+          (m) => m.info.role === "assistant" && m.info.error?.name === "LeakedToolcallMarkerError",
+        )
+        expect(leakedAssistants.length).toBeGreaterThanOrEqual(3)
+        // Every assistant turn produced this turn leaked, so NONE is left live.
+        const liveLeakAssistant = afterExhaust.some(
+          (m) =>
+            m.info.role === "assistant" &&
+            !m.info.error &&
+            m.parts.some((p) => p.type === "text" && p.text?.trim() === "call:"),
+        )
+        expect(liveLeakAssistant).toBe(false)
+
+        // Defects 1 & 2: the permanent <tool-call-format> block is never written
+        // to the store (no persistence, so nothing to accumulate). The retry
+        // path's own per-retry <system-reminder> is fine; the format block is not.
+        const persistedFormat = afterExhaust
+          .flatMap((m) => m.parts)
+          .some((p) => p.type === "text" && p.text?.includes(FORMAT))
+        expect(persistedFormat).toBe(false)
+
+        // Turn 2: a real user turn after exhaustion. It must NOT carry a replayed
+        // <tool-call-format> reminder in its model input — the exhaustion path
+        // injects nothing that pollutes future turns. The model tool-calls
+        // cleanly and finishes.
+        yield* prompt.prompt({
+          sessionID: session.id,
+          agent: "build",
+          noReply: true,
+          parts: [{ type: "text", text: "please continue" }],
+        })
+        yield* llm.push(reply().tool("mcp_success", {}).item())
+        yield* llm.text("done cleanly")
+        const result2 = yield* prompt.loop({ sessionID: session.id })
+        expect(result2.info.role).toBe("assistant")
+        expect(result2.parts.some((p) => p.type === "text" && p.text === "done cleanly")).toBe(true)
+
+        // No model request on ANY turn ever contains the format block — it is
+        // neither persisted nor transiently injected. This is the core anti-
+        // pollution guarantee.
+        const inputs = yield* llm.inputs
+        expect(inputs.some((req) => JSON.stringify(req?.messages).includes(FORMAT))).toBe(false)
+
+        // Still nothing persisted after the clean follow-up turn either.
+        const afterT2 = yield* MessageV2.filterCompactedEffect(session.id)
+        const persistedFormatT2 = afterT2
+          .flatMap((m) => m.parts)
+          .some((p) => p.type === "text" && p.text?.includes(FORMAT))
+        expect(persistedFormatT2).toBe(false)
+      }),
+      { git: true, config: providerCfg },
+    ),
+  20_000,
+)
+
 mcpIt.live("MCP structuredContent is persisted and reaches the model alongside text", () =>
   provideTmpdirServer(
     Effect.fnUntraced(function* ({ llm }) {
