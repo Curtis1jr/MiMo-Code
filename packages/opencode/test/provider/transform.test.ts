@@ -4508,5 +4508,3 @@ describe("ProviderTransform.message - interleaved field: empty reasoning still s
     expect(result[0].providerOptions?.openaiCompatible?.reasoning_content).toBe("")
   })
 })
-  })
-})
