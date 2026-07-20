@@ -14,6 +14,7 @@ import { Instance } from "../project/instance"
 import { SessionCwd } from "./session-cwd"
 import { trimDiff } from "./edit"
 import { assertWriteAllowed, askEditUnlessMemory } from "./external-directory"
+import { isProtectedMemoryPath, guardedWrite, guardedRead } from "./shared-guard"
 
 const MAX_PROJECT_DIAGNOSTICS_FILES = 5
 
@@ -47,7 +48,26 @@ export const WriteTool = Tool.define(
             diff,
           })
 
-          yield* fs.writeWithDirs(filepath, params.content)
+          // Phase 0 shared-memory guard: protected paths use flock + atomic write + revision tracking
+          if (isProtectedMemoryPath(filepath)) {
+            const readResult = yield* Effect.promise(() => guardedRead(filepath))
+            const result = yield* Effect.promise(() =>
+              guardedWrite(filepath, params.content, readResult.exists ? readResult.hash : null),
+            )
+            if (result.status === "stale_base") {
+              throw new Error(
+                `STALE_BASE: File ${filepath} was modified by another session since you last read it. ` +
+                  `Current revision: ${result.currentHash.slice(0, 8)}... ` +
+                  `Your base revision: ${result.expectedHash.slice(0, 8)}... ` +
+                  `Re-read the file and retry.`,
+              )
+            }
+            if (result.status === "error") {
+              throw new Error(`Write failed: ${result.message}`)
+            }
+          } else {
+            yield* fs.writeWithDirs(filepath, params.content)
+          }
           yield* format.file(filepath)
           yield* bus.publish(File.Event.Edited, { file: filepath })
           yield* bus.publish(FileWatcher.Event.Updated, {

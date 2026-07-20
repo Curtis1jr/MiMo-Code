@@ -19,6 +19,7 @@ import { SessionCwd } from "./session-cwd"
 import { Snapshot } from "@/snapshot"
 import { assertWriteAllowed, askEditUnlessMemory } from "./external-directory"
 import { AppFileSystem } from "@mimo-ai/shared/filesystem"
+import { isProtectedMemoryPath, guardedEdit, guardedRead } from "./shared-guard"
 
 function normalizeLineEndings(text: string): string {
   return text.replaceAll("\r\n", "\n")
@@ -77,6 +78,41 @@ export const EditTool = Tool.define(
             ? params.filePath
             : path.join(SessionCwd.get(ctx.sessionID), params.filePath)
           yield* assertWriteAllowed(ctx, filePath)
+
+          // Phase 0 shared-memory guard: protected paths use flock + atomic write + revision tracking
+          if (isProtectedMemoryPath(filePath)) {
+            const readResult = yield* Effect.promise(() => guardedRead(filePath))
+            const result = yield* Effect.promise(() =>
+              guardedEdit(
+                filePath,
+                params.oldString,
+                params.newString,
+                params.replaceAll ?? false,
+                readResult.exists ? readResult.hash : null,
+              ),
+            )
+            if (result.status === "stale_base") {
+              throw new Error(
+                `STALE_BASE: File ${filePath} was modified by another session since you last read it. ` +
+                  `Current revision: ${result.currentHash.slice(0, 8)}... ` +
+                  `Your base revision: ${result.expectedHash.slice(0, 8)}... ` +
+                  `Re-read the file and retry.`,
+              )
+            }
+            if (result.status === "error") {
+              throw new Error(`Edit failed: ${result.message}`)
+            }
+            // Success — return early, skip the normal write path
+            return {
+              title: path.relative(Instance.worktree, filePath),
+              metadata: {
+                diff: "",
+                filediff: undefined as any,
+                diagnostics: {},
+              },
+              output: `File edited successfully (guarded write, revision: ${result.hash.slice(0, 8)}...)`,
+            }
+          }
 
           let diff = ""
           let contentOld = ""
