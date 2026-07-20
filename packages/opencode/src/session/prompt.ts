@@ -242,7 +242,7 @@ const PREDICT_NUDGE = `Based on the conversation above, write the user's most li
 const OUTPUT_LENGTH_CONTINUATION_LIMIT = Flag.MIMOCODE_OUTPUT_LENGTH_CONTINUATION_LIMIT
 const INVALID_OUTPUT_CONTINUATION_LIMIT = Flag.MIMOCODE_INVALID_OUTPUT_CONTINUATION_LIMIT
 const TEXT_TOOL_CALL_RETRY_LIMIT = Flag.MIMOCODE_TEXT_TOOL_CALL_RETRY_LIMIT
-const CALL_PREAMBLE_LEAK_RETRY_LIMIT = Flag.MIMOCODE_CALL_PREAMBLE_LEAK_RETRY_LIMIT
+const LEAKED_TOOLCALL_MARKER_RETRY_LIMIT = Flag.MIMOCODE_LEAKED_TOOLCALL_MARKER_RETRY_LIMIT
 
 const log = Log.create({ service: "session.prompt" })
 
@@ -2157,10 +2157,10 @@ NOTE: At any point in time through this workflow you should feel free to ask the
         // prose text instead of a structured tool_use). Local to runLoop so each
         // fresh user turn starts clean.
         let textToolCallRetries = 0
-        // Bounded retries for call-preamble leaks (provider emits junk text
-        // like "call:" or "code" before a real tool call). Local to runLoop,
-        // resets per user turn.
-        let callPreambleLeakRetries = 0
+        // Bounded retries for leaked tool-call markers (provider emits junk
+        // text like "call:" or "code" before a real tool call). Local to
+        // runLoop, resets per user turn.
+        let leakedToolcallMarkerRetries = 0
         const resolvedAgentID = agentID ?? "main"
         // Tracks plugin-driven cancellation (session.pre OR any session.userQuery.pre)
         // so session.post reports outcome="cancelled" instead of "error".
@@ -2641,21 +2641,21 @@ NOTE: At any point in time through this workflow you should feel free to ask the
           yield* slog.info("text n-gram: recovery injected", { attempt: textNgramRecoveryAttempts })
           return true
         })
-        // Call-preamble leak retry. The provider leaks a tool-call preamble
-        // marker into assistant text — a junk text part like "call:", "code",
+        // Leaked tool-call marker retry. The provider leaks a tool-call marker
+        // into assistant text — a junk text part like "call:", "code",
         // or a bare tool name immediately before the real structured tool call.
         // The bad assistant turn is DISCARDED from history (error-tagged) and
         // a synthetic user turn re-drives generation. On exhaustion a
         // persistent <tool-call-format> reminder is injected to suppress
         // future leaks. Returns true => continue; false => break.
-        const autoRetryCallPreambleLeak = Effect.fn("SessionPrompt.autoRetryCallPreambleLeak")(function* (input: {
+        const autoRetryLeakedToolcallMarker = Effect.fn("SessionPrompt.autoRetryLeakedToolcallMarker")(function* (input: {
           lastUser: MessageV2.User
           assistant: MessageV2.Assistant
         }) {
           if (input.assistant.error) return false
-          if (callPreambleLeakRetries >= CALL_PREAMBLE_LEAK_RETRY_LIMIT) {
+          if (leakedToolcallMarkerRetries >= LEAKED_TOOLCALL_MARKER_RETRY_LIMIT) {
             // Exhausted — inject a persistent suppress reminder so the model
-            // stops emitting preamble junk in future steps.
+            // stops emitting leaked tool-call marker junk in future steps.
             const suppressMsg = yield* sessions.updateMessage({
               id: MessageID.ascending(),
               role: "user" as const,
@@ -2682,12 +2682,12 @@ NOTE: At any point in time through this workflow you should feel free to ask the
             return false
           }
           // Tag the bad turn as discarded from history.
-          input.assistant.error = new MessageV2.CallPreambleLeakError({
-            message: "Provider leaked a tool-call preamble marker into assistant text.",
+          input.assistant.error = new MessageV2.LeakedToolcallMarkerError({
+            message: "Provider leaked a tool-call marker into assistant text.",
           }).toObject()
           yield* sessions.updateMessage(input.assistant)
-          callPreambleLeakRetries++
-          yield* slog.info("retrying call-preamble leak", { attempt: callPreambleLeakRetries })
+          leakedToolcallMarkerRetries++
+          yield* slog.info("retrying leaked tool-call marker", { attempt: leakedToolcallMarkerRetries })
           const msg = yield* sessions.updateMessage({
             id: MessageID.ascending(),
             role: "user" as const,
@@ -2865,8 +2865,8 @@ NOTE: At any point in time through this workflow you should feel free to ask the
               yield* slog.info("exiting loop", { classification: classification.type })
               break
             }
-            if (classification.type === "call-preamble-leak") {
-              if (yield* autoRetryCallPreambleLeak({ lastUser, assistant: lastAssistant })) continue
+            if (classification.type === "leaked-toolcall-marker") {
+              if (yield* autoRetryLeakedToolcallMarker({ lastUser, assistant: lastAssistant })) continue
               yield* slog.info("exiting loop", { classification: classification.type })
               break
             }
@@ -3443,8 +3443,8 @@ NOTE: At any point in time through this workflow you should feel free to ask the
                 if (yield* autoRetryTextToolCall({ lastUser, assistant: handle.message })) return "continue" as const
                 return "break" as const
               }
-              if (forkClassification.type === "call-preamble-leak") {
-                if (yield* autoRetryCallPreambleLeak({ lastUser, assistant: handle.message })) return "continue" as const
+              if (forkClassification.type === "leaked-toolcall-marker") {
+                if (yield* autoRetryLeakedToolcallMarker({ lastUser, assistant: handle.message })) return "continue" as const
                 return "break" as const
               }
               if (forkClassification.type !== "continue" && !handle.message.error && format.type === "json_schema") {
@@ -3666,8 +3666,8 @@ NOTE: At any point in time through this workflow you should feel free to ask the
               if (yield* autoRetryTextToolCall({ lastUser, assistant: handle.message })) return "continue" as const
               return "break" as const
             }
-            if (classification.type === "call-preamble-leak") {
-              if (yield* autoRetryCallPreambleLeak({ lastUser, assistant: handle.message })) return "continue" as const
+            if (classification.type === "leaked-toolcall-marker") {
+              if (yield* autoRetryLeakedToolcallMarker({ lastUser, assistant: handle.message })) return "continue" as const
               return "break" as const
             }
             if (classification.type !== "continue" && !handle.message.error && format.type === "json_schema") {

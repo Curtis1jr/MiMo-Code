@@ -12,7 +12,7 @@ export type StepClassification =
   | { type: "final"; degraded?: boolean }
   | { type: "continue" }
   | { type: "text-tool-call" }
-  | { type: "call-preamble-leak" }
+  | { type: "leaked-toolcall-marker" }
   | { type: "filtered" }
   | { type: "think-only" }
   | { type: "invalid"; reason: string }
@@ -40,7 +40,7 @@ export function classifyAssistantStep(input: {
 }): StepClassification {
   const assistant = input.assistant
 
-  // 0. Call-preamble leak: the provider emits junk text ("call:", "code",
+  // 0. Leaked tool-call marker: the provider emits junk text ("call:", "code",
   // or a bare tool name) before a real tool call. Detect BEFORE the core
   // guarantee so we can discard the step and retry, preventing the junk
   // text from persisting in conversation history and self-reinforcing.
@@ -55,7 +55,7 @@ export function classifyAssistantStep(input: {
         .filter((p): p is Extract<MessageV2.Part, { type: "tool" }> => p.type === "tool")
         .map((p) => p.tool),
     )
-    const hasPreambleLeak = input.parts.some((part) => {
+    const hasLeakedToolcallMarker = input.parts.some((part) => {
       if (part.type !== "text" || part.synthetic || part.ignored) return false
       const trimmed = part.text.trim()
       if (trimmed === "call:" || trimmed === "code") return true
@@ -63,7 +63,7 @@ export function classifyAssistantStep(input: {
       if (/^[a-z_][a-z0-9_-]*$/i.test(trimmed) && toolNames.has(trimmed)) return true
       return false
     })
-    if (hasPreambleLeak) return { type: "call-preamble-leak" }
+    if (hasLeakedToolcallMarker) return { type: "leaked-toolcall-marker" }
   }
 
   // 1. Core guarantee — beats everything: a pending client tool call must

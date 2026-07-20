@@ -89,10 +89,10 @@ export const Flag = {
   MIMOCODE_OUTPUT_LENGTH_CONTINUATION_LIMIT: number("MIMOCODE_OUTPUT_LENGTH_CONTINUATION_LIMIT") ?? 3,
   MIMOCODE_INVALID_OUTPUT_CONTINUATION_LIMIT: number("MIMOCODE_INVALID_OUTPUT_CONTINUATION_LIMIT") ?? 2,
   MIMOCODE_TEXT_TOOL_CALL_RETRY_LIMIT: number("MIMOCODE_TEXT_TOOL_CALL_RETRY_LIMIT") ?? 2,
-  // Call-preamble-leak retry limit: number of retries when the provider
-  // leaks junk preamble text ("call:", "code", bare tool name) before a
-  // real tool call. Mirrors TEXT_TOOL_CALL_RETRY_LIMIT.
-  MIMOCODE_CALL_PREAMBLE_LEAK_RETRY_LIMIT: number("MIMOCODE_CALL_PREAMBLE_LEAK_RETRY_LIMIT") ?? 2,
+  // Leaked-toolcall-marker retry limit: number of retries when the provider
+  // leaks a junk tool-call marker ("call:", "code", bare tool name) as text
+  // before a real tool call. Mirrors TEXT_TOOL_CALL_RETRY_LIMIT.
+  MIMOCODE_LEAKED_TOOLCALL_MARKER_RETRY_LIMIT: number("MIMOCODE_LEAKED_TOOLCALL_MARKER_RETRY_LIMIT") ?? 2,
 
   // Consecutive-block repetition detection for streamed reasoning + text.
   // A block of at least N tokens repeating REPEAT_THRESHOLD times consecutively

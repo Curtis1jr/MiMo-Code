@@ -410,8 +410,8 @@ describe("classifyAssistantStep", () => {
     })
   })
 
-  describe("call-preamble-leak detection", () => {
-    function preambleToolPart(messageID: string, toolName: string) {
+  describe("leaked-toolcall-marker detection", () => {
+    function leakedMarkerToolPart(messageID: string, toolName: string) {
       return {
         ...basePart(messageID),
         type: "tool" as const,
@@ -421,34 +421,34 @@ describe("classifyAssistantStep", () => {
       } as unknown as MessageV2.Part
     }
 
-    test("standalone 'call:' text before a tool call => call-preamble-leak", () => {
+    test("standalone 'call:' text before a tool call => leaked-toolcall-marker", () => {
       const result = classifyAssistantStep({
         phase: "after-process",
         lastUser,
         assistant: assistantInfo("m-2", { finish: "tool-calls" }),
-        parts: [textPart("m-2", "call:"), preambleToolPart("m-2", "read")],
+        parts: [textPart("m-2", "call:"), leakedMarkerToolPart("m-2", "read")],
       })
-      expect(result.type).toBe("call-preamble-leak")
+      expect(result.type).toBe("leaked-toolcall-marker")
     })
 
-    test("standalone 'code' text before a tool call => call-preamble-leak", () => {
+    test("standalone 'code' text before a tool call => leaked-toolcall-marker", () => {
       const result = classifyAssistantStep({
         phase: "after-process",
         lastUser,
         assistant: assistantInfo("m-2", { finish: "tool-calls" }),
-        parts: [textPart("m-2", "code"), preambleToolPart("m-2", "bash")],
+        parts: [textPart("m-2", "code"), leakedMarkerToolPart("m-2", "bash")],
       })
-      expect(result.type).toBe("call-preamble-leak")
+      expect(result.type).toBe("leaked-toolcall-marker")
     })
 
-    test("bare tool name before the same tool call => call-preamble-leak", () => {
+    test("bare tool name before the same tool call => leaked-toolcall-marker", () => {
       const result = classifyAssistantStep({
         phase: "after-process",
         lastUser,
         assistant: assistantInfo("m-2", { finish: "tool-calls" }),
-        parts: [textPart("m-2", "read"), preambleToolPart("m-2", "read")],
+        parts: [textPart("m-2", "read"), leakedMarkerToolPart("m-2", "read")],
       })
-      expect(result.type).toBe("call-preamble-leak")
+      expect(result.type).toBe("leaked-toolcall-marker")
     })
 
     test("bare tool name NOT matching any invoked tool => NOT flagged", () => {
@@ -456,9 +456,9 @@ describe("classifyAssistantStep", () => {
         phase: "after-process",
         lastUser,
         assistant: assistantInfo("m-2", { finish: "tool-calls" }),
-        parts: [textPart("m-2", "bash"), preambleToolPart("m-2", "read")],
+        parts: [textPart("m-2", "bash"), leakedMarkerToolPart("m-2", "read")],
       })
-      expect(result.type).not.toBe("call-preamble-leak")
+      expect(result.type).not.toBe("leaked-toolcall-marker")
     })
 
     test("real prose containing 'call' is NOT flagged", () => {
@@ -468,10 +468,10 @@ describe("classifyAssistantStep", () => {
         assistant: assistantInfo("m-2", { finish: "tool-calls" }),
         parts: [
           textPart("m-2", "I'll call the read tool to get the file contents."),
-          preambleToolPart("m-2", "read"),
+          leakedMarkerToolPart("m-2", "read"),
         ],
       })
-      expect(result.type).not.toBe("call-preamble-leak")
+      expect(result.type).not.toBe("leaked-toolcall-marker")
     })
 
     test("text with 'call:' embedded in prose is NOT flagged", () => {
@@ -481,10 +481,10 @@ describe("classifyAssistantStep", () => {
         assistant: assistantInfo("m-2", { finish: "tool-calls" }),
         parts: [
           textPart("m-2", "After the function call: the result was 42."),
-          preambleToolPart("m-2", "bash"),
+          leakedMarkerToolPart("m-2", "bash"),
         ],
       })
-      expect(result.type).not.toBe("call-preamble-leak")
+      expect(result.type).not.toBe("leaked-toolcall-marker")
     })
 
     test("synthetic text 'call:' is NOT flagged", () => {
@@ -494,23 +494,23 @@ describe("classifyAssistantStep", () => {
         assistant: assistantInfo("m-2", { finish: "tool-calls" }),
         parts: [
           textPart("m-2", "call:", { synthetic: true }),
-          preambleToolPart("m-2", "read"),
+          leakedMarkerToolPart("m-2", "read"),
         ],
       })
-      expect(result.type).not.toBe("call-preamble-leak")
+      expect(result.type).not.toBe("leaked-toolcall-marker")
     })
 
-    test("already-discarded turn does NOT re-detect as call-preamble-leak", () => {
+    test("already-discarded turn does NOT re-detect as leaked-toolcall-marker", () => {
       const result = classifyAssistantStep({
         phase: "after-process",
         lastUser,
         assistant: assistantInfo("m-2", {
           finish: "tool-calls",
-          error: new MessageV2.CallPreambleLeakError({ message: "discarded" }).toObject(),
+          error: new MessageV2.LeakedToolcallMarkerError({ message: "discarded" }).toObject(),
         }),
-        parts: [textPart("m-2", "call:"), preambleToolPart("m-2", "read")],
+        parts: [textPart("m-2", "call:"), leakedMarkerToolPart("m-2", "read")],
       })
-      expect(result.type).not.toBe("call-preamble-leak")
+      expect(result.type).not.toBe("leaked-toolcall-marker")
     })
 
     test("no tool parts in step => NOT flagged (needs real tool call present)", () => {
@@ -520,7 +520,7 @@ describe("classifyAssistantStep", () => {
         assistant: assistantInfo("m-2", { finish: "tool-calls" }),
         parts: [textPart("m-2", "call:")],
       })
-      expect(result.type).not.toBe("call-preamble-leak")
+      expect(result.type).not.toBe("leaked-toolcall-marker")
     })
   })
 })
