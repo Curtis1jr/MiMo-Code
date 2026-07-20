@@ -409,4 +409,118 @@ describe("classifyAssistantStep", () => {
       expect(result.type).toBe("continue")
     })
   })
+
+  describe("call-preamble-leak detection", () => {
+    function preambleToolPart(messageID: string, toolName: string) {
+      return {
+        ...basePart(messageID),
+        type: "tool" as const,
+        callID: "call-1",
+        tool: toolName,
+        state: { status: "completed" as const, input: {}, output: "ok", time: { start: 0, end: 1 }, title: "", metadata: {} },
+      } as unknown as MessageV2.Part
+    }
+
+    test("standalone 'call:' text before a tool call => call-preamble-leak", () => {
+      const result = classifyAssistantStep({
+        phase: "after-process",
+        lastUser,
+        assistant: assistantInfo("m-2", { finish: "tool-calls" }),
+        parts: [textPart("m-2", "call:"), preambleToolPart("m-2", "read")],
+      })
+      expect(result.type).toBe("call-preamble-leak")
+    })
+
+    test("standalone 'code' text before a tool call => call-preamble-leak", () => {
+      const result = classifyAssistantStep({
+        phase: "after-process",
+        lastUser,
+        assistant: assistantInfo("m-2", { finish: "tool-calls" }),
+        parts: [textPart("m-2", "code"), preambleToolPart("m-2", "bash")],
+      })
+      expect(result.type).toBe("call-preamble-leak")
+    })
+
+    test("bare tool name before the same tool call => call-preamble-leak", () => {
+      const result = classifyAssistantStep({
+        phase: "after-process",
+        lastUser,
+        assistant: assistantInfo("m-2", { finish: "tool-calls" }),
+        parts: [textPart("m-2", "read"), preambleToolPart("m-2", "read")],
+      })
+      expect(result.type).toBe("call-preamble-leak")
+    })
+
+    test("bare tool name NOT matching any invoked tool => NOT flagged", () => {
+      const result = classifyAssistantStep({
+        phase: "after-process",
+        lastUser,
+        assistant: assistantInfo("m-2", { finish: "tool-calls" }),
+        parts: [textPart("m-2", "bash"), preambleToolPart("m-2", "read")],
+      })
+      expect(result.type).not.toBe("call-preamble-leak")
+    })
+
+    test("real prose containing 'call' is NOT flagged", () => {
+      const result = classifyAssistantStep({
+        phase: "after-process",
+        lastUser,
+        assistant: assistantInfo("m-2", { finish: "tool-calls" }),
+        parts: [
+          textPart("m-2", "I'll call the read tool to get the file contents."),
+          preambleToolPart("m-2", "read"),
+        ],
+      })
+      expect(result.type).not.toBe("call-preamble-leak")
+    })
+
+    test("text with 'call:' embedded in prose is NOT flagged", () => {
+      const result = classifyAssistantStep({
+        phase: "after-process",
+        lastUser,
+        assistant: assistantInfo("m-2", { finish: "tool-calls" }),
+        parts: [
+          textPart("m-2", "After the function call: the result was 42."),
+          preambleToolPart("m-2", "bash"),
+        ],
+      })
+      expect(result.type).not.toBe("call-preamble-leak")
+    })
+
+    test("synthetic text 'call:' is NOT flagged", () => {
+      const result = classifyAssistantStep({
+        phase: "after-process",
+        lastUser,
+        assistant: assistantInfo("m-2", { finish: "tool-calls" }),
+        parts: [
+          textPart("m-2", "call:", { synthetic: true }),
+          preambleToolPart("m-2", "read"),
+        ],
+      })
+      expect(result.type).not.toBe("call-preamble-leak")
+    })
+
+    test("already-discarded turn does NOT re-detect as call-preamble-leak", () => {
+      const result = classifyAssistantStep({
+        phase: "after-process",
+        lastUser,
+        assistant: assistantInfo("m-2", {
+          finish: "tool-calls",
+          error: new MessageV2.CallPreambleLeakError({ message: "discarded" }).toObject(),
+        }),
+        parts: [textPart("m-2", "call:"), preambleToolPart("m-2", "read")],
+      })
+      expect(result.type).not.toBe("call-preamble-leak")
+    })
+
+    test("no tool parts in step => NOT flagged (needs real tool call present)", () => {
+      const result = classifyAssistantStep({
+        phase: "after-process",
+        lastUser,
+        assistant: assistantInfo("m-2", { finish: "tool-calls" }),
+        parts: [textPart("m-2", "call:")],
+      })
+      expect(result.type).not.toBe("call-preamble-leak")
+    })
+  })
 })
