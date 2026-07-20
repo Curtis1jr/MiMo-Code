@@ -10,6 +10,7 @@ import { Patch } from "../patch"
 import { createTwoFilesPatch, diffLines } from "diff"
 import { assertWriteAllowed } from "./external-directory"
 import { trimDiff } from "./edit"
+import { isProtectedMemoryPath, guardedWrite, guardedRead } from "./shared-guard"
 import { LSP } from "../lsp"
 import { AppFileSystem } from "@mimo-ai/shared/filesystem"
 import DESCRIPTION from "./apply_patch.txt"
@@ -28,6 +29,27 @@ export const ApplyPatchTool = Tool.define(
     const afs = yield* AppFileSystem.Service
     const format = yield* Format.Service
     const bus = yield* Bus.Service
+
+    // Helper: guarded write for protected memory paths, fall back to afs.writeWithDirs
+    const writeContent = Effect.fn("ApplyPatchTool.writeContent")(function* (filePath: string, content: string) {
+      if (isProtectedMemoryPath(filePath)) {
+        const readResult = yield* Effect.promise(() => guardedRead(filePath))
+        const result = yield* Effect.promise(() => guardedWrite(filePath, content, readResult.exists ? readResult.hash : null))
+        if (result.status === "stale_base") {
+          return yield* Effect.fail(
+            new Error(
+              `STALE_BASE: File ${filePath} was modified by another session since the patch was computed. ` +
+                `Re-read and regenerate the patch.`,
+            ),
+          )
+        }
+        if (result.status === "error") {
+          return yield* Effect.fail(new Error(`Write failed: ${result.message}`))
+        }
+      } else {
+        yield* afs.writeWithDirs(filePath, content)
+      }
+    })
 
     const run = Effect.fn("ApplyPatchTool.execute")(function* (params: z.infer<typeof PatchParams>, ctx: Tool.Context) {
       if (!params.patchText) {
@@ -221,12 +243,12 @@ export const ApplyPatchTool = Tool.define(
           case "add":
             // Create parent directories (recursive: true is safe on existing/root dirs)
 
-            yield* afs.writeWithDirs(change.filePath, change.newContent)
+            yield* writeContent(change.filePath, change.newContent)
             updates.push({ file: change.filePath, event: "add" })
             break
 
           case "update":
-            yield* afs.writeWithDirs(change.filePath, change.newContent)
+            yield* writeContent(change.filePath, change.newContent)
             updates.push({ file: change.filePath, event: "change" })
             break
 
@@ -234,7 +256,7 @@ export const ApplyPatchTool = Tool.define(
             if (change.movePath) {
               // Create parent directories (recursive: true is safe on existing/root dirs)
 
-              yield* afs.writeWithDirs(change.movePath!, change.newContent)
+              yield* writeContent(change.movePath!, change.newContent)
               yield* afs.remove(change.filePath)
               updates.push({ file: change.filePath, event: "unlink" })
               updates.push({ file: change.movePath, event: "add" })

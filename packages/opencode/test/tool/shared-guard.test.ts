@@ -64,15 +64,23 @@ describe("P0-5: isProtectedMemoryPath", () => {
     ).toBe(false)
   })
 
-  test("does NOT protect spillover files", () => {
+  test("protects per-project MEMORY spillover files", () => {
     expect(
       isProtectedMemoryPath(
         "/home/user/.local/share/mimocode/memory/projects/abc-123/MEMORY-spillover.md",
       ),
-    ).toBe(false)
+    ).toBe(true)
   })
 
-  test("does NOT protect task progress files", () => {
+  test("protects session checkpoint spillover files", () => {
+    expect(
+      isProtectedMemoryPath(
+        "/home/user/.local/share/mimocode/memory/sessions/ses_abc123/checkpoint-rules-2026-07-20.md",
+      ),
+    ).toBe(true)
+  })
+
+  test("does NOT protect notes.md", () => {
     expect(
       isProtectedMemoryPath(
         "/home/user/.local/share/mimocode/memory/sessions/ses_abc123/tasks/T1/progress.md",

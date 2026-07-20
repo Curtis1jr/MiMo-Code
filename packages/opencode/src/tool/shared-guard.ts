@@ -35,24 +35,25 @@ const CHECKPOINT_FILENAME = "checkpoint.md"
  *
  * Protected paths:
  * - Per-project memory: .../memory/projects/{pid}/MEMORY.md
+ * - Per-project memory spillover: .../memory/projects/{pid}/MEMORY-*.md
  * - Global memory: .../memory/global/MEMORY.md
  * - Session checkpoint: .../memory/sessions/{sid}/checkpoint.md
+ * - Session checkpoint spillover: .../memory/sessions/{sid}/checkpoint-*.md
  *
  * NOT protected:
  * - Session notes: .../memory/sessions/{sid}/notes.md
  * - Task progress: .../memory/sessions/{sid}/tasks/...
- * - Spillover files: .../memory/projects/{pid}/MEMORY-*.md
  * - Arbitrary Markdown files outside the memory tree
  */
 export function isProtectedMemoryPath(filePath: string): boolean {
   const normalized = path.normalize(filePath)
 
-  // Per-project MEMORY.md: .../memory/projects/<pid>/MEMORY.md
-  if (
-    normalized.includes(MEMORY_DIR_SEGMENT) &&
-    normalized.endsWith(path.join("MEMORY.md"))
-  ) {
-    return true
+  // Per-project MEMORY.md or MEMORY-*.md: .../memory/projects/<pid>/MEMORY*.md
+  if (normalized.includes(MEMORY_DIR_SEGMENT)) {
+    const basename = path.basename(normalized)
+    if (basename === "MEMORY.md" || basename.startsWith("MEMORY-")) {
+      return true
+    }
   }
 
   // Global MEMORY.md: .../memory/global/MEMORY.md
@@ -60,18 +61,18 @@ export function isProtectedMemoryPath(filePath: string): boolean {
     return true
   }
 
-  // Per-session checkpoint.md: .../memory/sessions/<sid>/checkpoint.md
-  if (
-    normalized.includes(path.join("memory", "sessions")) &&
-    normalized.endsWith(CHECKPOINT_FILENAME)
-  ) {
+  // Per-session checkpoint.md or checkpoint-*.md: .../memory/sessions/<sid>/checkpoint*.md
+  if (normalized.includes(path.join("memory", "sessions"))) {
     // Ensure it's directly under a session dir, not in tasks/ or deeper
     const afterSessions = normalized.split(path.join("memory", "sessions"))[1]
     if (afterSessions) {
       const parts = afterSessions.split(path.sep).filter(Boolean)
-      // Expected: <sid>/checkpoint.md (2 parts)
-      if (parts.length === 2 && parts[1] === CHECKPOINT_FILENAME) {
-        return true
+      // Expected: <sid>/checkpoint.md or <sid>/checkpoint-<topic>.md (2 parts)
+      if (parts.length === 2) {
+        const basename = parts[1]
+        if (basename === "checkpoint.md" || basename.startsWith("checkpoint-")) {
+          return true
+        }
       }
     }
   }
