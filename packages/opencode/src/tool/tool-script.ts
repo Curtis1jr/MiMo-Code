@@ -358,7 +358,17 @@ export const ToolScriptTool = Tool.define(
           const byId = new Map(defs.map((def) => [def.id, def]))
           // MCP tools (late-bound ref, populated by SessionPrompt). Builtin ids
           // win on collision — an MCP server must not shadow `read`/`grep`.
-          const mcpTools = toolScriptMcp.current ? yield* toolScriptMcp.current() : {}
+          const mcpTools = toolScriptMcp.current
+            ? yield* toolScriptMcp.current(
+                ctx.turnID
+                  ? {
+                      sessionId: ctx.sessionID,
+                      turnId: ctx.turnID,
+                      ...(ctx.turnActorID ? { actorId: ctx.turnActorID } : {}),
+                    }
+                  : undefined,
+              )
+            : {}
           const mcpById = new Map(Object.entries(mcpTools).filter(([id]) => !byId.has(id)))
           // Non-git projects report worktree === "/" (see Instance.containsPath) —
           // "/" as a jail root would allow EVERYTHING. Fall back to the project

@@ -90,12 +90,25 @@ async function runToolScript(
   code: string,
   defs: Tool.Def[],
   abort?: AbortSignal,
-  opts?: { mcp?: Record<string, any>; ask?: () => Effect.Effect<void>; maxToolCalls?: number; timeoutSeconds?: number },
+  opts?: {
+    mcp?: Record<string, any>
+    ask?: () => Effect.Effect<void>
+    maxToolCalls?: number
+    timeoutSeconds?: number
+    turnID?: string
+    turnActorID?: string
+    onMcpContext?: (context: unknown) => void
+  },
 ) {
   const prev = toolScriptRegistry.current
   const prevMcp = toolScriptMcp.current
   toolScriptRegistry.current = () => Effect.succeed(defs)
-  toolScriptMcp.current = opts?.mcp ? () => Effect.succeed(opts.mcp!) : undefined
+  toolScriptMcp.current = opts?.mcp
+    ? (context) => {
+        opts.onMcpContext?.(context)
+        return Effect.succeed(opts.mcp!)
+      }
+    : undefined
   try {
     return await Instance.provide({
       directory: tmp,
@@ -113,6 +126,8 @@ async function runToolScript(
               sessionID: "ses_test" as any,
               messageID: "msg_test" as any,
               agent: "build",
+              turnID: opts?.turnID,
+              turnActorID: opts?.turnActorID,
               abort: abort ?? new AbortController().signal,
               callID: "call_test",
               messages: [],
@@ -524,6 +539,22 @@ describe("exec MCP dispatch", () => {
     expect(result.output).toContain("hit-1")
     expect(result.output).toContain("hit-2")
     expect(seen).toEqual([{ q: "x" }])
+  })
+
+  test("MCP subcalls resolve tools with the outer turn context", async () => {
+    const contexts: unknown[] = []
+    const mcp = {
+      srv_go: fakeMcpTool(async () => ({ content: [{ type: "text", text: "ok" }] })),
+    }
+    const result = await runToolScript(`return (await tools.srv_go({})).output`, [], undefined, {
+      mcp,
+      turnID: "turn_1",
+      turnActorID: "main",
+      onMcpContext: (context) => contexts.push(context),
+    })
+
+    expect(result.metadata.status).toBe("completed")
+    expect(contexts).toEqual([{ sessionId: "ses_test", turnId: "turn_1", actorId: "main" }])
   })
 
   test("MCP call goes through permission ask", async () => {

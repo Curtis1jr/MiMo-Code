@@ -310,7 +310,7 @@ export const layer = Layer.effect(
     // through the same live client set the agent sees. Populated here (not in
     // ToolRegistry) because MCP's layer lives in this graph — the registry
     // providing MCP.defaultLayer itself would duplicate client connections.
-    toolScriptMcp.current = () => mcp.tools()
+    toolScriptMcp.current = (context) => mcp.tools(context)
 
     // Track sessions that have already shown the "loaded instructions" toast so we
     // surface it once per primary session rather than on every run-loop turn.
@@ -916,6 +916,7 @@ NOTE: At any point in time through this workflow you should feel free to ask the
       messages: MessageV2.WithParts[]
       agentID?: string
       task_id?: string
+      mcpContext: MCP.TurnContext
     }) {
       using _ = log.time("resolveTools")
       const tools: Record<string, AITool> = {}
@@ -980,6 +981,8 @@ NOTE: At any point in time through this workflow you should feel free to ask the
         agent: input.agent.name,
         actorID: input.agentID,
         taskId: input.task_id,
+        turnID: input.mcpContext.turnId,
+        turnActorID: input.mcpContext.actorId,
         messages: input.messages,
         metadata: (val) =>
           input.processor.updateToolCall(options.toolCallId, (match) => {
@@ -1118,7 +1121,7 @@ NOTE: At any point in time through this workflow you should feel free to ask the
         })
       }
 
-      for (const [key, item] of Object.entries(yield* mcp.tools())) {
+      for (const [key, item] of Object.entries(yield* mcp.tools(input.mcpContext))) {
         const execute = item.execute
         if (!execute) continue
 
@@ -2197,6 +2200,11 @@ NOTE: At any point in time through this workflow you should feel free to ask the
         // into the same loop.
         let hardHalt = false
         const resolvedAgentID = agentID ?? "main"
+        const mcpContext: MCP.TurnContext = {
+          sessionId: sessionID,
+          turnId: ulid(),
+          actorId: resolvedAgentID,
+        }
         // Tracks plugin-driven cancellation (session.pre OR any session.userQuery.pre)
         // so session.post reports outcome="cancelled" instead of "error".
         let cancelled = false
@@ -2236,20 +2244,36 @@ NOTE: At any point in time through this workflow you should feel free to ask the
                 : finalAsst
                   ? sessionErrorText(finalAsst.error)
                   : undefined
-            yield* plugin.trigger(
-              "session.post",
-              {
-                sessionID,
-                agentID: resolvedAgentID,
-                task_id,
-                outcome,
-                error,
-                finalText: finalAsst ? assistantFinalText(finalAsst, finalParts) : undefined,
-                assistantMessageID: finalAsst?.id,
-                trajectory: serializeTrajectoryMessages(sliceMsgs),
-                systemPrompt: lastSystemPrompt,
-              },
-              {},
+            const interrupted = Exit.isFailure(exit) && Cause.hasInterrupts(exit.cause)
+            const lifecycleStatus: MCP.TurnStatus =
+              cancelled || interrupted ? "cancelled" : failed || finalIsError ? "error" : "completed"
+            yield* Effect.all(
+              [
+                plugin
+                  .trigger(
+                    "session.post",
+                    {
+                      sessionID,
+                      agentID: resolvedAgentID,
+                      task_id,
+                      outcome,
+                      error,
+                      finalText: finalAsst ? assistantFinalText(finalAsst, finalParts) : undefined,
+                      assistantMessageID: finalAsst?.id,
+                      trajectory: serializeTrajectoryMessages(sliceMsgs),
+                      systemPrompt: lastSystemPrompt,
+                    },
+                    {},
+                  )
+                  .pipe(Effect.ignore),
+                mcp
+                  .clients()
+                  .pipe(
+                    Effect.flatMap((clients) => MCP.notifyTurnLifecycle(clients, mcpContext, lifecycleStatus)),
+                    Effect.ignore,
+                  ),
+              ],
+              { concurrency: "unbounded", discard: true },
             )
           }).pipe(Effect.ignore)
 
@@ -3281,6 +3305,7 @@ NOTE: At any point in time through this workflow you should feel free to ask the
               messages: msgs,
               agentID: lastUser.agentID,
               task_id,
+              mcpContext,
             })
 
             if (lastUser.format?.type === "json_schema") {
