@@ -71,21 +71,66 @@ The consolidation this document builds on — already merged on this branch:
 - **compose.js workflow** (749 lines) unchanged in structure; prompts reference
   the new skill names and the `spec/<feature>.md` feature-document path.
 
+### Delivered on top of step 0: rename + scope mechanism (step 1a)
+
+Landed on `compose-slim` as `23a13568` (33 files, +321/−119):
+
+- **Names.** `compose:{grill,docs,dev}` → `compose-{grill,spec,dev}`. Colon out,
+  hyphen in — readable in listings, safe in slash-mention contexts. `docs` →
+  `spec` because the skill produces exactly one `spec/<feature>.md` per
+  feature; the name now matches its directory.
+- **Bundle dirs.** `.bundle/{grill,docs,dev}/` → `.bundle/compose-{grill,spec,dev}/`.
+  Skill name = directory name (1:1), so `loadComposeBundle()` no longer
+  synthesizes `compose:${dir}`; the prefix is baked into the directory.
+- **`Skill.Info.scope`.** New optional field on the discovery record,
+  populated at scan time (`scope: "compose" | "builtin" | "project" |
+  "global"`). Wired through a `ScanMeta` struct so future per-scope metadata
+  attaches at the same seam without changing signatures.
+- **`Permission.evaluateSkill({name, scope}, ...rulesets)`.** New public API in
+  `permission/evaluate.ts`. Two-tier matching: an explicit name rule wins
+  (`compose-grill`), a `scope:<scope>` rule is the fallback (`scope:compose`).
+  This is the ONLY entry point callers should use to gate a skill by permission
+  — do not reinvent the two-tier logic locally. Wired into `Skill.available`
+  in one line.
+- **No more name-prefix mechanism keys.** `search.ts` and `localized-alias.ts`
+  now filter on `scope === "compose"`; TUI (`autocomplete.tsx`,
+  `dialog-skill.tsx`) does the same. Agent config for build/plan uses
+  `"scope:compose": "deny"`; compose agent uses `"scope:compose": "allow"`.
+  A user's project skill that happens to start with `compose-` is no longer
+  swept up.
+- **Tests.** New `test/skill/available-permission.test.ts` covers the
+  end-to-end gate (build sees 0 compose-scoped skills; compose sees all three;
+  `compose-foo` user skill in `.opencode/skills/` is not filtered on build).
+  New `test/skill/localized-alias.test.ts` covers the scope-vs-name filter.
+  Existing tests migrated to name/scope semantics; 187/187 pass across
+  `test/skill`, `test/agent`, `test/workflow/compose`, `test/session/prompt-skill-mention`.
+- **SDK types regenerated** to expose `Skill.scope`.
+
+Explicitly NOT in this PR — scheduled as a separate task (see T1b in
+`## Tasks`): moving the bundle to `skill/builtin/.bundle/`, adding the
+activation clause, and exposing `compose.skills` config is a **user-visible
+breaking change**. It changes how users invoke compose (via `/compose`
+activation instead of switching to the compose agent) and may need a
+deprecation window and migration hint for anyone still relying on the
+compose agent. Ship 1a first, dogfood it, then design the migration
+surface for 1b separately.
+
 ## [S3] Target Architecture
 
 ### Skills become builtin, hyphen-named, scope-tracked, soft-gated
 
-Move `grill`, `docs`, `dev` from `skill/compose/.bundle/` to
-`skill/builtin/.bundle/` as `compose-grill`, `compose-docs`, `compose-dev`,
-**retaining `scope: "compose"` metadata** on the scanned entries. Future
-splits (e.g. `compose-review`) are additive directory drops — free
-composition, no mechanism changes.
+Move `compose-grill`, `compose-spec`, `compose-dev` from
+`skill/compose/.bundle/` to `skill/builtin/.bundle/`, **retaining `scope:
+"compose"` metadata** on the scanned entries. Future splits (e.g.
+`compose-review`) are additive directory drops — free composition, no
+mechanism changes.
 
 - **Scope is the mechanism key; the name is pure UX.** All special-casing
   (search exclusion, kill switch, any future filtering) keys on the structured
-  `scope` field, never on name prefixes. Today's `name.startsWith("compose:")`
-  string checks (`search.ts:65`, `localized-alias.ts:8`) are replaced by scope
-  checks — renaming a skill never touches filter logic.
+  `scope` field, never on name prefixes. The `name.startsWith("compose:")`
+  string checks that used to live in `search.ts` and `localized-alias.ts` have
+  been replaced by scope checks; permission gating goes through
+  `Permission.evaluateSkill`. Renaming a skill never touches filter logic.
 - **Naming:** `compose-` prefix, no colon — readable, groups in listings,
   parses cleanly in slash-mention contexts. Carries no mechanical meaning.
 - **Soft gate (probabilistic):** each description begins with an activation
@@ -108,9 +153,8 @@ composition, no mechanism changes.
      steers the model. This upgrades the soft gate to deterministic without
      touching list composition — adopt only if description-gating proves
      insufficient in step-1 observation.
-- **skill_search exclusion** keyed on scope=compose (replacing the prefix
-  check) so they never auto-load via search; reachable only by name or via
-  /compose.
+- **skill_search exclusion** keyed on scope=compose so they never auto-load
+  via search; reachable only by name or via /compose.
 
 ### /compose becomes a slash command
 
@@ -179,9 +223,10 @@ text and no workflow opinion. Workflow opinions live in commands (/compose,
 | Step | Change | Gate before next |
 |---|---|---|
 | 0 | Consolidate 14 skills → 3; slim compose.txt; move feature docs under `spec/` (**done**, `1975a8d5`, `7ff01213`, `f708b01e`) | Dogfood on real tasks; no regression vs old flow |
-| 1 | Skills → builtin as `compose-*` with activation-clause descriptions + config kill-switch; update compose.js, search exclusion, i18n keys, tests | compose-* not spuriously invoked in normal build sessions (observe across N sessions) |
+| 1a | Rename compose:{grill,docs,dev} → compose-{grill,spec,dev}; add `Skill.Info.scope`; introduce `Permission.evaluateSkill` and gate on scope not name-prefix (**done**, `23a13568`) | 187/187 relevant tests green; no name-prefix mechanism keys remain in code |
+| 1b | **[separate PR — breaking]** Move skills to `skill/builtin/.bundle/` (still under `scope: "compose"`); add activation clause to descriptions; surface `compose.skills` config; design deprecation + migration path for users still on the compose-agent invocation | compose-* not spuriously invoked in normal build sessions; deprecation hint documented |
 | 2 | `/compose` command template; delete prompt.ts injection; compose agent kept as thin alias for back-compat | /compose-from-build equals compose-mode behavior on the same tasks |
-| 3 | Remove compose agent + `compose:*` permission special-cases + compose extraction path | No user-facing workflow loss; config migration note |
+| 3 | Remove compose agent + compose-scope permission special-cases + compose extraction path | No user-facing workflow loss; config migration note |
 | 4 | `/plan` command + Read-only preset; deprecate plan_enter/plan_exit (tool stubs warn) | Plan-mode parity: read-only actually enforced by preset |
 | 5 | Tab cycles permission presets; agent concept internal-only | UI/UX validation |
 
@@ -201,8 +246,9 @@ no return for the mode; 4–5 generalize the pattern.
 ## Tasks
 
 - [x] T0: consolidate skills to grill/docs/dev, slim compose.txt — acceptance: tests green, typecheck clean (covers: S2)
-- [ ] T1: move skills to builtin as compose-grill/docs/dev with scope=compose metadata and activation-clause descriptions — acceptance: skills visible in build agent, not auto-triggered without /compose in test prompts; scan-time kill-switch removes scope=compose uniformly; no name-prefix checks remain (covers: S3)
-- [ ] T2: add /compose command template rendering docs_dir at expansion; delete prompt.ts injection — acceptance: /compose from build agent reproduces compose-mode behavior on a golden task (covers: S3) (depends: T1)
-- [ ] T3: remove compose agent, permission special-cases, compose scan scope — acceptance: no references to `compose:` scope remain; migration note in changelog (covers: S3) (depends: T2)
+- [x] T1a: rename compose:{grill,docs,dev} → compose-{grill,spec,dev}; wire `Skill.Info.scope`; gate permission via `Permission.evaluateSkill` instead of `name.startsWith("compose:")` — acceptance: no name-prefix mechanism keys remain in `search.ts` / `localized-alias.ts` / `TUI` / agent config; user skill `compose-foo` (scope=project) is not filtered on build agent (covers: S3)
+- [ ] T1b: (SEPARATE PR — user-visible breaking change) move bundle from `skill/compose/.bundle/` to `skill/builtin/.bundle/`; add activation clause to each skill description; expose `compose.skills` config surface; design deprecation + migration hint for anyone still relying on the old compose-agent-only invocation path — acceptance: skills visible in build agent, not auto-triggered without /compose in test prompts; scan-time kill-switch removes scope=compose uniformly; deprecation surface documented in changelog (covers: S3) (depends: T1a)
+- [ ] T2: add /compose command template rendering docs_dir at expansion; delete prompt.ts injection — acceptance: /compose from build agent reproduces compose-mode behavior on a golden task (covers: S3) (depends: T1b)
+- [ ] T3: remove compose agent, compose-scope permission special-cases, compose scan scope — acceptance: no references to compose scope remain outside builtin; migration note in changelog (covers: S3) (depends: T2)
 - [ ] T4: /plan command + Read-only permission preset; stub plan_enter/plan_exit — acceptance: Read-only preset blocks writes deterministically; /plan produces plan-mode-equivalent behavior (covers: S3, S4) (depends: T2)
 - [ ] T5: Tab cycles permission presets — acceptance: UI switch changes only permissions, session agent unchanged (covers: S4) (depends: T3, T4)
