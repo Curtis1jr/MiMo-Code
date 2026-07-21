@@ -1,6 +1,6 @@
 ---
 name: compose-grill
-description: Use before creative or ambiguous work — new features, behavior changes, design decisions. Interviews the user one question at a time until shared understanding, then hands off to compose-spec.
+description: Use before creative or ambiguous work — new features, behavior changes, design decisions. Interviews the user one decision at a time until shared understanding, then hands off to compose-spec.
 ---
 
 # Grill — Requirements Interrogation
@@ -9,7 +9,7 @@ Interview the user relentlessly about the task until you reach a shared understa
 
 ## Rules of the Interview
 
-- **One question per turn.** Multiple questions at once are bewildering; each answer should inform the next question.
+- **One decision per turn.** A decision is one branch of the tree — one axis whose answer unblocks the next question. Never bundle unrelated decisions ("should we revert AND how does CI change AND when is sprint?") — each answer must inform the NEXT decision, and mixing axes just confuses the user. When a single decision genuinely has multiple must-answer parameters (e.g. revert vs keep + how to respond to the feedback + which branch), collect them as one structured `question` call rather than dragging them across turns. The tree, not the arithmetic, sets the pace.
 - **Recommend an answer with every question.** Take a position with reasoning — the user reacts to a proposal, not a blank prompt.
 - **Facts from the environment, decisions from the user.** If a question can be answered by exploring the codebase (files, docs, recent commits), look it up instead of asking. Only genuine decisions go to the user. Explore project context FIRST — before the first question, not after.
 - **Scope first.** If the request spans multiple independent subsystems, surface the decomposition before refining details of any one piece — each sub-project then gets its own grill → docs → dev cycle.

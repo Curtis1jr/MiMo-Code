@@ -24,8 +24,8 @@ describe("compose skill bundle contract", () => {
   describe("grill: interrogation contract", () => {
     const md = () => bundle["compose-grill"]["SKILL.md"]
 
-    test("asks one question at a time with a recommended answer", () => {
-      expect(md()).toMatch(/one question/i)
+    test("interviews one decision at a time with a recommended answer", () => {
+      expect(md()).toMatch(/one decision/i)
       expect(md()).toMatch(/recommend/i)
     })
 
