@@ -30,12 +30,23 @@ export const extractComposeBundle = Effect.fn("Skill.extractComposeBundle")(func
   fsys: AppFileSystem.Interface,
 ) {
   const root = path.join(GlobalPath.data, "compose", InstallationVersion)
+  const skillsRoot = path.join(root, "skills")
   const marker = path.join(root, ".extracted")
 
   if (!InstallationLocal && (yield* fsys.existsSafe(marker))) return root
 
+  // Local dev channel re-extracts every start (no marker gate). Old files
+  // from previous bundle layouts (skills that were renamed, split, or
+  // consolidated away — e.g. this branch's 14→3 collapse + grill/docs/dev
+  // → compose-grill/compose-spec/compose-dev rename) would otherwise
+  // remain as orphans and get picked up alongside the new skills. Wipe
+  // the skills tree before rewriting so it stays a mirror of the bundle.
+  if (InstallationLocal && (yield* fsys.existsSafe(skillsRoot))) {
+    yield* fsys.remove(skillsRoot, { recursive: true, force: true })
+  }
+
   for (const [skillName, files] of Object.entries(COMPOSE_BUNDLE)) {
-    const skillDir = path.join(root, "skills", skillName)
+    const skillDir = path.join(skillsRoot, skillName)
     for (const [relPath, content] of Object.entries(files)) {
       yield* fsys.writeWithDirs(path.join(skillDir, relPath), content)
     }
