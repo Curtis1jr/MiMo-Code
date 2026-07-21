@@ -12,7 +12,7 @@ Use the feature document as the source of requirements, or the conversation for 
 Never begin implementation on `main` or `master` without explicit user consent.
 
 1. Compare `git rev-parse --git-dir` with `git rev-parse --git-common-dir`. If they differ, use the current linked worktree; do not nest another. A non-empty `git rev-parse --show-superproject-working-tree` indicates a submodule, not a linked worktree.
-2. Unless the user or harness already chose the workspace, create a linked worktree under `.worktrees/` or an existing `worktrees/` directory at the project root; `.worktrees/` wins when both exist. Verify the directory is ignored with `git check-ignore -q <directory>` and update `.gitignore` before creation if needed. Create it with `git worktree add "$path" -b "$branch"`. If the environment prevents worktree creation, report that limitation and work in place on a non-base branch.
+2. Unless the user or harness already chose the workspace, create a linked worktree under `.worktrees/` or an existing `worktrees/` directory at the project root; `.worktrees/` wins when both exist. Verify the directory is ignored with `git check-ignore -q <directory>`. If not, add it to `.git/info/exclude` for local-only isolation; modify and commit `.gitignore` only when the user or repository instructions require a shared convention. Then create the worktree with `git worktree add "$path" -b "$branch"`. If the environment prevents worktree creation, report that limitation and work in place on a non-base branch.
 3. Install dependencies using repository instructions and run the relevant baseline tests. If the baseline fails, report the exact failure and ask whether to proceed. If that question returns `[Never-Ask]`, continue and keep the failure classified as pre-existing.
 
 ## Implement
@@ -55,15 +55,23 @@ Require separate conclusions for:
 
 Classify unmet or unverifiable acceptance criteria and correctness bugs as critical. Fix critical findings, re-verify, and re-review affected areas. Reject incorrect findings with technical evidence.
 
-For human review feedback, verify each item against the codebase, clarify ambiguous items before editing, and implement validated items one at a time with verification.
+For human review feedback, verify each item against the codebase, clarify ambiguous items before editing, and implement validated items one at a time with verification. Check actual usage before expanding an unused path, and surface conflicts with prior user decisions instead of silently complying.
 
 ## Deliver And Finish
 
 1. After review passes, invoke `compose-spec` to finalize and commit the feature document on the feature branch.
 2. Confirm the branch is clean and verification is green.
-3. Determine the base branch. If ambiguous, use the `question` tool; without user input, use the detected merge base.
-4. Ask with the `question` tool: merge locally, create PR, keep branch, or discard. Without user input, merge locally; on detached HEAD, create a PR. Never auto-discard.
+3. Determine the base branch with `git merge-base HEAD main` or `git merge-base HEAD master`. If ambiguous, use the `question` tool; on `[Never-Ask]`, use the detected branch.
+4. On a named branch, ask with the `question` tool: merge locally, create PR, keep branch, or discard. On detached HEAD, offer only create PR, keep, or discard. On `[Never-Ask]`, merge a named branch locally or create a PR from detached HEAD. Never auto-discard.
 
-For a local merge, perform these steps in order and stop if any step fails: move to the main repository root; update the base branch; merge the feature branch; verify the merged result; remove only a compose-owned worktree; run `git worktree prune`; delete the merged branch. For PR or keep, preserve the worktree and branch. Discard requires explicit confirmation before worktree removal or `git branch -D`.
+For a local merge, perform these steps in order and stop if any step fails:
+
+1. Move to the main repository root.
+2. Check out and pull the base branch, then merge the feature branch.
+3. Verify the merged result.
+4. Remove only a compose-owned worktree and run `git worktree prune`.
+5. Delete the merged branch with `git branch -d`.
+
+For PR or keep, preserve the worktree and branch. Discard requires explicit confirmation before worktree removal or `git branch -D`.
 
 Only remove worktrees under the project's `.worktrees/` or `worktrees/`, or `~/.config/compose/worktrees/`. Leave harness- and user-owned worktrees intact.

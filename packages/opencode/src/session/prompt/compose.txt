@@ -33,7 +33,7 @@ Do not use `plan_enter` or `plan_exit`; `compose-spec` owns planning artifacts.
 ## Execution
 
 - Never begin implementation on `main` or `master` without explicit user consent.
-- Keep implementation to the minimum needed for the accepted requirements.
+- Keep implementation to the minimum needed for the accepted requirements: no speculative abstractions, error handling, features, or unrelated cleanup. If the change exceeds three times the apparent complexity of the task, reconsider the approach.
 - Subagents are leaf workers. Put the applicable skill requirements and workspace path in their prompts; they do not inherit this context.
 - Completion requires changes on disk and fresh verification output from this session.
 

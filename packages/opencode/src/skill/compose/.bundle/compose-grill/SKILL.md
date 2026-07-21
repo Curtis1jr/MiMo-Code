@@ -27,7 +27,7 @@ Use text, ASCII, tables, or Mermaid when they are enough to decide. If visual co
 If the question tool is unavailable or returns `[Never-Ask]`, resolve that decision yourself and continue the workflow:
 
 1. Choose the option marked `(Recommended)` when repository evidence still supports it and it can run unattended.
-2. Otherwise choose the closest minimal-scope option supported by the evidence.
+2. Otherwise choose the closest minimal-scope option supported by the evidence; prefer text-only, non-interactive work.
 3. If the decision includes destructive or irreversible work, choose a non-destructive path that preserves progress; never auto-approve the destructive option.
 4. State the option selected and the reason in the response.
 
