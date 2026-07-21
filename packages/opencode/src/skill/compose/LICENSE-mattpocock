@@ -1,11 +1,16 @@
-The compose skills in this directory are derived from the "superpowers" project
-(https://github.com/obra/superpowers) by Jesse Vincent, used under the MIT License.
+The compose:grill skill's interview contract (relentless interviewing, one
+question at a time, recommended answer per question, resolving the decision
+tree dependency-first, exploring the environment for facts instead of asking)
+is derived from the "grilling" / "grill-me" skills in the mattpocock/skills
+project by Matt Pocock, used under the MIT License.
+
+Source: https://github.com/mattpocock/skills
 
 ---
 
 MIT License
 
-Copyright (c) 2025 Jesse Vincent
+Copyright (c) 2026 Matt Pocock
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
