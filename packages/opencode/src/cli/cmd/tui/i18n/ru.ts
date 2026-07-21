@@ -303,20 +303,9 @@ export const dict = {
     "Исследование, аудит, прототипирование и проверка дизайна продукта и UX",
   "tui.skill.sales.description":
     "Подготовка встреч, исследование клиентов, планирование сделок и работа с системами продаж",
-  "tui.skill.compose:ask.description": "Запросить у пользователя решение или уточнение",
-  "tui.skill.compose:brainstorm.description": "Исследовать требования и дизайн перед реализацией",
-  "tui.skill.compose:debug.description": "Системная отладка перед предложением исправлений",
-  "tui.skill.compose:execute.description": "Выполнить план реализации с контрольными точками",
-  "tui.skill.compose:feedback.description": "Обработать отзывы код-ревью с технической строгостью",
-  "tui.skill.compose:merge.description": "Интегрировать завершённую работу — merge, PR или очистка",
-  "tui.skill.compose:parallel.description": "Выполнять независимые задачи параллельно",
-  "tui.skill.compose:plan.description": "Создать пошаговый план реализации из спецификации",
-  "tui.skill.compose:report.description": "Свести результаты реализации в итоговый отчёт",
-  "tui.skill.compose:review.description": "Проверить соответствие требованиям перед merge",
-  "tui.skill.compose:subagent.description": "Делегировать независимые задачи субагентам",
-  "tui.skill.compose:tdd.description": "Разработка через тестирование — тесты перед кодом",
-  "tui.skill.compose:verify.description": "Запустить проверку и подтвердить успешный результат",
-  "tui.skill.compose:worktree.description": "Создать изолированное рабочее пространство",
+  "tui.skill.compose:dev.description": "Реализация — сначала тесты, затем проверка, ревью и завершение ветки",
+  "tui.skill.compose:grill.description": "Допрос требований по одному вопросу до общего понимания",
+  "tui.skill.compose:docs.description": "Дизайн, задачи и отчёт о поставке в одном документе фичи",
 
   // Language switching
   "tui.command.language.switch.title": "Сменить язык",

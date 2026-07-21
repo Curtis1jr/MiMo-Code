@@ -95,6 +95,6 @@ describe("skill.search", () => {
   })
 
   test("excludes compose skills from the searchable manifest", () => {
-    expect(searchSkills("compose:tdd", [skill("compose:tdd", "Use test-driven development.")])).toEqual([])
+    expect(searchSkills("compose:dev", [skill("compose:dev", "Implement with test-first discipline.")])).toEqual([])
   })
 })

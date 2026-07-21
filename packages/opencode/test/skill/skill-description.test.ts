@@ -12,7 +12,7 @@ describe("skillDescription", () => {
   const t = (key: string) => {
     const translations: Record<string, string> = {
       "tui.skill.evolve.description": "Translated evolve description",
-      "tui.skill.compose:plan.description": "Translated compose plan",
+      "tui.skill.compose:docs.description": "Translated compose spec",
     }
     return translations[key] as string
   }
@@ -30,7 +30,7 @@ describe("skillDescription", () => {
   })
 
   test("returns translation for bundled compose skill", () => {
-    expect(skillDescription(t, "compose:plan", "Fallback", true)).toBe("Translated compose plan")
+    expect(skillDescription(t, "compose:docs", "Fallback", true)).toBe("Translated compose spec")
   })
 
   test("returns fallback when translation key is missing", () => {

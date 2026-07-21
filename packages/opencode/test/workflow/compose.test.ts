@@ -33,8 +33,12 @@ describe("compose script structure", () => {
 
   test("each phase applies its compose skill (verify included)", () => {
     const script = composeScript()
-    for (const skill of ["compose:brainstorm", "compose:debug", "compose:feedback", "compose:plan", "compose:tdd", "compose:review", "compose:report", "compose:merge", "compose:verify"]) {
+    for (const skill of ["compose:grill", "compose:docs", "compose:dev"]) {
       expect(script).toContain(skill)
+    }
+    // Retired skills must be gone from the script.
+    for (const gone of ["compose:brainstorm", "compose:plan", "compose:tdd", "compose:debug", "compose:feedback", "compose:review", "compose:report", "compose:merge", "compose:verify"]) {
+      expect(script).not.toContain(gone)
     }
   })
 
@@ -42,12 +46,11 @@ describe("compose script structure", () => {
     const script = composeScript()
     // The design-write and report agents must NOT use a schema (a schema biases the
     // agent into emitting JSON instead of writing the file). They are dispatched by
-    // label and gated by glob (specs/plans) / exists (report).
+    // label and gated by glob (docs dir) / exists (feature document).
     expect(script).toContain('label: "design:"')
     expect(script).toContain('label: "design-extract:"')
-    expect(script).toContain("glob(SPECS_DIR")
-    expect(script).toContain("glob(PLANS_DIR")
-    expect(script).toContain("exists(REPORT_PATH)")
+    expect(script).toContain("glob(DOCS_DIR")
+    expect(script).toContain("exists(FEATURE_PATH)")
     // The extract agent must force a direct StructuredOutput tool call (avoids the
     // prose→retry loop that stalled the Design phase).
     expect(script).toContain("StructuredOutput")
@@ -83,7 +86,7 @@ const runCompose = async (
   const phases: string[] = []
   const written: string[] = []
   const existsImpl = opts?.exists ?? (() => true)
-  // The design gate globs SPECS_DIR/PLANS_DIR for *.md. By default simulate the
+  // The design gate globs DOCS_DIR for *.md. By default simulate the
   // agent having written a doc (one match), so the gate passes. globEmpty:true
   // simulates the agent never writing → the gate re-dispatches. A custom glob
   // override simulates pre-existing docs (for amend tests).
@@ -114,7 +117,7 @@ describe("compose phase 0: Brainstorm", () => {
     const bs = calls.find((c) => c.opts?.schema?.properties?.context)
     expect(bs).toBeDefined()
     expect(bs!.opts.label).toBe("brainstorm")
-    expect(bs!.prompt).toContain("compose:brainstorm")
+    expect(bs!.prompt).toContain("compose:grill")
     expect(bs!.prompt).toContain("AUTONOMOUS")
   })
 
@@ -128,16 +131,15 @@ describe("compose docs dir injection", () => {
   test("design-write + report prompts carry the configured docs dir", async () => {
     const { calls } = await runCompose({ task: "x", type: "feature", _composeDocsDir: "custom/docs" })
     const designWrite = calls.find((c) => c.opts?.label && String(c.opts.label).startsWith("design:"))
-    expect(designWrite!.prompt).toContain("custom/docs/specs")
-    expect(designWrite!.prompt).toContain("custom/docs/plans")
+    expect(designWrite!.prompt).toContain("custom/docs")
     const report = calls.find((c) => c.opts?.label === "final-report")
-    expect(report!.prompt).toContain("custom/docs/reports")
+    expect(report!.prompt).toContain("custom/docs")
   })
 
   test("defaults to docs/compose when host did not inject", async () => {
     const { calls } = await runCompose({ task: "x", type: "feature" })
     const designWrite = calls.find((c) => c.opts?.label && String(c.opts.label).startsWith("design:"))
-    expect(designWrite!.prompt).toContain("docs/compose/specs")
+    expect(designWrite!.prompt).toContain("docs/compose")
   })
 })
 
@@ -175,32 +177,35 @@ describe("compose type resolution (no Classify phase)", () => {
     expect(calls.find((c) => c.opts?.schema?.properties?.type && c.opts?.schema?.properties?.confidence)).toBeUndefined()
   })
 
-  test("heuristic routes a bug task to compose:debug without an LLM classify call", async () => {
+  test("heuristic flavors a bug task with root-cause emphasis without an LLM classify call", async () => {
     const { calls } = await runCompose({ task: "fix the foo regression that crashes on startup" })
     const designWrite = calls.find((c) => c.opts?.label && String(c.opts.label).startsWith("design:"))
-    expect(designWrite!.prompt).toContain("compose:debug")
+    expect(designWrite!.opts.label).toBe("design:bugfix")
+    expect(designWrite!.prompt).toContain("ROOT CAUSE")
   })
 
   test("explicit args.type is honored", async () => {
     const { calls } = await runCompose({ task: "implement bar", type: "feedback" })
     const designWrite = calls.find((c) => c.opts?.label && String(c.opts.label).startsWith("design:"))
-    expect(designWrite!.prompt).toContain("compose:feedback")
+    expect(designWrite!.opts.label).toBe("design:feedback")
+    expect(designWrite!.prompt).toContain("Review-feedback discipline")
   })
 
-  test("default (no keyword, no args.type) routes to compose:plan", async () => {
+  test("default (no keyword, no args.type) routes to compose:docs with no extra emphasis", async () => {
     const { calls } = await runCompose({ task: "implement a brand new widget gallery" })
     const designWrite = calls.find((c) => c.opts?.label && String(c.opts.label).startsWith("design:"))
-    expect(designWrite!.prompt).toContain("compose:plan")
+    expect(designWrite!.opts.label).toBe("design:feature")
+    expect(designWrite!.prompt).toContain("compose:docs")
   })
 })
 
 describe("compose phase 2: Design", () => {
   test.each([
-    ["feature", "compose:plan"],
-    ["refactor", "compose:plan"],
-    ["bugfix", "compose:debug"],
-    ["feedback", "compose:feedback"],
-  ])("type=%s routes the design-write agent to %s", async (type, skill) => {
+    ["feature", ""],
+    ["refactor", ""],
+    ["bugfix", "ROOT CAUSE"],
+    ["feedback", "Review-feedback discipline"],
+  ])("type=%s routes the design-write agent to compose:docs (emphasis: %s)", async (type, emphasis) => {
     const { calls } = await runCompose({ task: "x", type }, (prompt, opts) => {
       if (opts?.schema?.properties?.context) return { context: { projectType: "x", conventions: [], recentChanges: [], relevantFiles: [] }, assumptions: [] }
       if (opts?.schema?.properties?.tasks) return { tasks: [{ id: "t1", description: "d", acceptance: "a" }] }
@@ -208,7 +213,8 @@ describe("compose phase 2: Design", () => {
     })
     const designWrite = calls.find((c) => c.opts?.label && String(c.opts.label).startsWith("design:"))
     expect(designWrite).toBeDefined()
-    expect(designWrite!.prompt).toContain(skill)
+    expect(designWrite!.prompt).toContain("compose:docs")
+    if (emphasis) expect(designWrite!.prompt).toContain(emphasis)
   })
 
   test("extract returning null surfaces design-failed", async () => {
@@ -519,8 +525,7 @@ describe("compose E2E smoke", () => {
 })
 
 describe("compose incremental amend", () => {
-  const withExistingDocs = (p: string) =>
-    p.includes("/specs") ? ["docs/compose/specs/strutil.md"] : p.includes("/plans") ? ["docs/compose/plans/strutil.md"] : []
+  const withExistingDocs = (p: string) => (p.includes(".md") ? ["docs/compose/strutil.md"] : [])
 
   test("brainstorm is given the list of existing compose docs", async () => {
     const { calls } = await runCompose(
@@ -538,7 +543,7 @@ describe("compose incremental amend", () => {
       { task: "change truncate ellipsis to unicode …" },
       (prompt, opts) => {
         if (opts?.schema?.properties?.context)
-          return { context: { projectType: "x", conventions: [], recentChanges: [], relevantFiles: [] }, assumptions: [], amends: "strutil", existingDocs: ["docs/compose/plans/strutil.md"] }
+          return { context: { projectType: "x", conventions: [], recentChanges: [], relevantFiles: [] }, assumptions: [], amends: "strutil", existingDocs: ["docs/compose/strutil.md"] }
         return happyAgent(prompt, opts)
       },
       { glob: withExistingDocs },
@@ -566,17 +571,16 @@ describe("compose incremental amend", () => {
     expect(writes).toHaveLength(1)
   })
 
-  test("non-amend (empty amends) keeps the normal create-spec/plan prompt", async () => {
+  test("non-amend (empty amends) keeps the normal create-doc prompt", async () => {
     const { calls } = await runCompose({ task: "x", type: "feature" })
     const write = calls.find((c) => c.opts?.label && String(c.opts.label).startsWith("design:"))
     expect(write!.prompt).not.toContain("AMENDMENT")
-    expect(write!.prompt).toContain("create BOTH of these files")
+    expect(write!.prompt).toContain("create this feature document")
   })
 })
 
 describe("compose amend scope-aware fan-out", () => {
-  const existing = (p: string) =>
-    p.includes("/plans") ? ["docs/compose/plans/strutil.md"] : p.includes("/specs") ? ["docs/compose/specs/strutil.md"] : []
+  const existing = (p: string) => (p.includes(".md") ? ["docs/compose/strutil.md"] : [])
   const amendAgent = (prompt: string, opts?: any) => {
     if (opts?.schema?.properties?.context)
       return { context: { projectType: "x", conventions: [], recentChanges: [], relevantFiles: [] }, assumptions: [], amends: "strutil" }
@@ -622,7 +626,7 @@ describe("compose brainstorm robustness", () => {
 describe("compose phase I/O chaining", () => {
   test("brainstorm prompt self-conducts Socratic Q&A + approaches (autonomous)", () => {
     const s = composeScript()
-    expect(s).toContain("self-conduct the dialogue")
+    expect(s).toContain("self-conduct the interview")
     expect(s).toContain("selfQA")
     expect(s).toContain("approaches")
     expect(s).toContain("chosenApproach")
