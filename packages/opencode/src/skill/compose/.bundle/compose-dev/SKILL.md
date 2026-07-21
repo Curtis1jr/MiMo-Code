@@ -31,17 +31,7 @@ No completion claims without fresh evidence. Before saying done/fixed/passing: r
 
 ## Review Gate
 
-Before merging (and after each task when dispatching subagents), run ONE fresh-eyes review — **performed by a subagent, never by yourself** (an author cannot review their own diff without confirmation bias).
-
-Give the reviewer three inputs, and nothing else:
-
-1. The covered spec text.
-2. The `git diff`.
-3. **The evidence bundle you already collected during Verification** — the exact test names that ran, their command outputs, and `file:line` references that support each acceptance criterion.
-
-NOT the implementer's prose report — that anchors the reviewer toward confirming what was reported. (The report may be introduced AFTER the review to explain flagged items; it can downgrade a flag, never add a pass.)
-
-**The reviewer AUDITS evidence; it does not PRODUCE evidence.** It never runs the test suite, boots the app, or executes commands to "verify for itself" — that's the implementer's job during Verification and is complete before the review. If an acceptance criterion has no entry in the evidence bundle, that's a critical finding (missing verification) — the reviewer flags it and sends the work back, does not run the test.
+Before merging (and after each task when dispatching subagents), run ONE fresh-eyes review — **performed by a subagent, never by yourself** (an author cannot review their own diff without confirmation bias). Give the reviewer the covered spec text + the `git diff` and nothing else — NOT the implementer's report. The report anchors reviewers toward confirming what was reported and away from silent omissions; if introduced at all, it comes AFTER the review, solely to explain flagged items, and it can downgrade a flag but never add a pass.
 
 If you're working in an isolated worktree, tell the reviewer the worktree path AND the base branch to diff against — a fresh subagent starts at the repo root and would otherwise produce the wrong diff (or none at all). Passing the pre-computed diff text inline is also fine; either way, do not let the reviewer guess.
 
