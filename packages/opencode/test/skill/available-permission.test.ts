@@ -64,7 +64,9 @@ describe("Skill.available permission gate", () => {
       "---\nname: compose-foo\ndescription: User-defined helper that happens to share the compose- prefix.\n---\n\nBody.\n",
     )
 
-    // Ensure this project's scan picks up .opencode/skills — flag has to be off.
+    // Ensure this project's scan picks up .opencode/skills — flags have to be off.
+    const savedExternal = process.env.MIMOCODE_DISABLE_EXTERNAL_SKILLS
+    const savedOpencode = process.env.MIMOCODE_DISABLE_OPENCODE_SKILLS
     delete process.env.MIMOCODE_DISABLE_EXTERNAL_SKILLS
     delete process.env.MIMOCODE_DISABLE_OPENCODE_SKILLS
     try {
@@ -79,7 +81,10 @@ describe("Skill.available permission gate", () => {
       expect(result).toBeDefined()
       expect(result!.scope).not.toBe("compose")
     } finally {
-      process.env.MIMOCODE_DISABLE_EXTERNAL_SKILLS = "true"
+      if (savedExternal === undefined) delete process.env.MIMOCODE_DISABLE_EXTERNAL_SKILLS
+      else process.env.MIMOCODE_DISABLE_EXTERNAL_SKILLS = savedExternal
+      if (savedOpencode === undefined) delete process.env.MIMOCODE_DISABLE_OPENCODE_SKILLS
+      else process.env.MIMOCODE_DISABLE_OPENCODE_SKILLS = savedOpencode
     }
   })
 })

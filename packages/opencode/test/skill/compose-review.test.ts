@@ -35,7 +35,7 @@ describe("compose skill bundle contract", () => {
     })
   })
 
-  describe("docs: single feature document contract", () => {
+  describe("spec: single feature document contract", () => {
     const md = () => bundle["compose-spec"]["SKILL.md"]
 
     test("uses stable [Sn] section anchors", () => {

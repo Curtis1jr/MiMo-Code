@@ -26,6 +26,9 @@ const MIMOCODE_SKILL_PATTERN = "{skill,skills}/**/SKILL.md"
 const SKILL_PATTERN = "**/SKILL.md"
 const BUILTIN_SKILL_PATTERN = "skills/*/SKILL.md"
 
+export const SCOPES = ["builtin", "compose", "project", "global", "user"] as const
+export type Scope = (typeof SCOPES)[number]
+
 export const Info = z.object({
   name: z.string(),
   description: z.string(),
@@ -34,7 +37,7 @@ export const Info = z.object({
   content: z.string(),
   hidden: z.boolean().optional(),
   bundled: z.boolean().optional(),
-  scope: z.string().optional(),
+  scope: z.enum(SCOPES).optional(),
 })
 export type Info = z.infer<typeof Info>
 
@@ -62,7 +65,7 @@ type State = {
 }
 
 type ScanMeta = {
-  scope?: string
+  scope?: Scope
 }
 
 type DiscoveryState = {
@@ -147,7 +150,7 @@ const scan = Effect.fnUntraced(function* (
   state: ScanState,
   root: string,
   pattern: string,
-  opts?: { dot?: boolean; scope?: string },
+  opts?: { dot?: boolean; scope?: Scope },
 ) {
   const matches = yield* Effect.tryPromise({
     try: () =>
@@ -242,7 +245,7 @@ const discoverSkills = Effect.fnUntraced(function* (
 
   const configDirs = yield* config.directories()
   for (const dir of configDirs) {
-    yield* scan(state, dir, MIMOCODE_SKILL_PATTERN)
+    yield* scan(state, dir, MIMOCODE_SKILL_PATTERN, { scope: "user" })
   }
 
   const cfg = yield* config.get()
@@ -254,13 +257,13 @@ const discoverSkills = Effect.fnUntraced(function* (
       continue
     }
 
-    yield* scan(state, dir, SKILL_PATTERN)
+    yield* scan(state, dir, SKILL_PATTERN, { scope: "user" })
   }
 
   for (const url of cfg.skills?.urls ?? []) {
     const pulledDirs = yield* discovery.pull(url)
     for (const dir of pulledDirs) {
-      yield* scan(state, dir, SKILL_PATTERN)
+      yield* scan(state, dir, SKILL_PATTERN, { scope: "user" })
     }
   }
 

@@ -36,8 +36,23 @@ describe("compose script structure", () => {
     for (const skill of ["compose-grill", "compose-spec", "compose-dev"]) {
       expect(script).toContain(skill)
     }
-    // Retired skills must be gone from the script.
-    for (const gone of ["compose:brainstorm", "compose:plan", "compose:tdd", "compose:debug", "compose:feedback", "compose:review", "compose:report", "compose:merge", "compose:verify"]) {
+    // Retired skills must be gone from the script — both the fully-removed
+    // ones (step 0 consolidation) and the pre-rename forms of the three
+    // survivors (step 1a rename).
+    for (const gone of [
+      "compose:brainstorm",
+      "compose:plan",
+      "compose:tdd",
+      "compose:debug",
+      "compose:feedback",
+      "compose:review",
+      "compose:report",
+      "compose:merge",
+      "compose:verify",
+      "compose:grill",
+      "compose:docs",
+      "compose:dev",
+    ]) {
       expect(script).not.toContain(gone)
     }
   })

@@ -28,10 +28,14 @@ export function evaluate(permission: string, pattern: string, ...rulesets: Rule[
  *   { "*": "allow", "scope:compose": "deny", "compose-grill": "allow" }
  * to default-deny an entire scope while allowlisting one skill.
  *
+ * Note: `compose-*` as a NAME wildcard is a valid user-config option, but
+ * default rulesets should key on `scope:compose` instead — the whole point of
+ * this refactor is that mechanism keys off the structured scope field, not
+ * off a name prefix that a user's own skill could accidentally match.
+ *
  * When the config has no rule for either the name or the scope, both queries
- * hit the wildcard fallback (`pattern: "*"`) — treat that as "no explicit
- * rule matched" and return whichever wildcard result was found (they'll be
- * identical since they resolve against the same fallback ruleset).
+ * fall through to the `pattern: "*"` fallback; in that case we return the
+ * name query's result (both queries hit the same fallback ruleset).
  */
 export function evaluateSkill(
   target: { name: string; scope?: string },

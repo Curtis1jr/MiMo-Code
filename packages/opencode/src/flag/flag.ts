@@ -269,8 +269,8 @@ export const Flag = {
   // external tooling set these env vars at runtime.
 
   // Disables compose-agent-internal skills (e.g. compose-grill, compose-spec,
-  // compose-dev). These are hidden workflow-orchestration skills only visible
-  // to the compose agent and are NOT part of builtin skills.
+  // compose-dev). Gated via scope=compose in permission (Permission.evaluateSkill)
+  // and in the TUI/search filters; not part of builtin skills.
   get MIMOCODE_DISABLE_COMPOSE_SKILLS() {
     return truthy("MIMOCODE_DISABLE_COMPOSE_SKILLS")
   },
