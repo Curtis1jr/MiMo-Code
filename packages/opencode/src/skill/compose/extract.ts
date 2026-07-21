@@ -35,12 +35,17 @@ export const extractComposeBundle = Effect.fn("Skill.extractComposeBundle")(func
 
   if (!InstallationLocal && (yield* fsys.existsSafe(marker))) return root
 
-  // Local dev channel re-extracts every start (no marker gate). Old files
-  // from previous bundle layouts (skills that were renamed, split, or
-  // consolidated away — e.g. this branch's 14→3 collapse + grill/docs/dev
-  // → compose-grill/compose-spec/compose-dev rename) would otherwise
-  // remain as orphans and get picked up alongside the new skills. Wipe
-  // the skills tree before rewriting so it stays a mirror of the bundle.
+  // Local dev channel re-extracts every start (no marker gate). Wipe first
+  // so orphans from previous bundle layouts (skills renamed, split, or
+  // removed — e.g. this branch's 14→3 collapse plus grill/docs/dev →
+  // compose-grill/compose-spec/compose-dev rename) don't linger.
+  //
+  // Known dev-only edge case: two mimo dev processes starting within the
+  // same tens-of-ms window can transiently see a partial skill set (one
+  // process wipes while the other reads). Accepted — bundle bytes are
+  // built into the binary so any final state converges, and the next
+  // startup self-heals. Not worth a flock for a channel release builds
+  // never touch.
   if (InstallationLocal && (yield* fsys.existsSafe(skillsRoot))) {
     yield* fsys.remove(skillsRoot, { recursive: true, force: true })
   }
