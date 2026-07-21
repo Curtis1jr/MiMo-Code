@@ -201,7 +201,7 @@ const discoverSkills = Effect.fnUntraced(function* (
     )
     if (composeSkillRoot && (yield* fsys.isDir(composeSkillRoot))) {
       bundledRoots.push(composeSkillRoot)
-      yield* scan(state, composeSkillRoot, SKILL_PATTERN, { scope: "compose" })
+      yield* scan(state, composeSkillRoot, BUILTIN_SKILL_PATTERN, { scope: "compose" })
     }
   }
 

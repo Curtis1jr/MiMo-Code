@@ -164,9 +164,13 @@ const MAX_CONCURRENT =
 // mirroring the <compose_docs_dir> block prompt.ts gives the interactive compose
 // agent. Default keeps the workflow self-sufficient if the host didn't inject.
 const DOCS_DIR = typeof _argsObj._composeDocsDir === "string" && _argsObj._composeDocsDir ? _argsObj._composeDocsDir : "docs/compose"
+// Feature documents live in the spec/ subdirectory of the docs dir — the same
+// convention compose:docs states (subdirectory names are a skill-level contract;
+// the config value stays the base dir).
+const SPEC_DIR = DOCS_DIR + "/spec"
 const docsBlock =
   "<compose_docs_dir>\n" +
-  "Save feature documents in `" + DOCS_DIR + "`, one file per feature: `<feature-name>.md`.\n" +
+  "Save feature documents in `" + SPEC_DIR + "`, one file per feature: `<feature-name>.md`.\n" +
   "</compose_docs_dir>"
 
 // Slug for the feature document filename. feature_name overrides; else slugify task.
@@ -179,7 +183,7 @@ const FEATURE_NAME =
     .replace(/^-+|-+$/g, "")
     .slice(0, 60)
     .replace(/-+$/, "")) || "compose-run"
-const FEATURE_PATH = DOCS_DIR + "/" + FEATURE_NAME + ".md"
+const FEATURE_PATH = SPEC_DIR + "/" + FEATURE_NAME + ".md"
 
 // ---------------------------------------------------------------------------
 // Phase 0 — Brainstorm (autonomous-mode contract: context recon only, never-ask)
@@ -191,7 +195,7 @@ const SYNTHETIC_CONTEXT = { projectType: "unknown", conventions: [], recentChang
 // reuse the existing spec/plan instead of regenerating everything. The workflow
 // only lists the files; the agent reads + judges.
 const _globArr = async (pat) => { const r = await glob(pat); return Array.isArray(r) ? r : [] }
-const existingDocs = await _globArr(DOCS_DIR + "/*.md")
+const existingDocs = await _globArr(SPEC_DIR + "/*.md")
 const existingDocsBlock = existingDocs.length
   ? "\n## Existing compose artifacts (this project has prior compose work)\n" +
     existingDocs.map((p) => "- " + p).join("\n") + "\n" +
@@ -290,7 +294,7 @@ const runDesignWrite = (sharpen) => agent(
   "## Project context (from brainstorm)\n" + contextDigest + "\n\n" +
   (AMENDS
     ? "## This is an AMENDMENT to an existing feature: " + AMENDS + "\n" +
-      "Use `glob`/`read` to find that feature's existing document under `" + DOCS_DIR + "`. " +
+      "Use `glob`/`read` to find that feature's existing document under `" + SPEC_DIR + "`. " +
       "EDIT it IN PLACE (write back to the SAME file path) to reflect ONLY the change in the task above — do NOT rewrite from scratch. " +
       "The Tasks section must then contain ONLY the tasks that need to be (re-)implemented for this change, PLUS any tasks that " +
       "depend on them. Tasks unaffected by the change MUST be omitted from the actionable list — they are reused as-is.\n\n" +
@@ -317,7 +321,7 @@ await runDesignWrite(false)
 // computed slug (model-chosen filename, trailing-dash drift, etc.). So treat the
 // gate as "did ANY .md land in the docs dir", not an exact-path match — this
 // avoids a redundant, expensive re-dispatch when the file is actually there.
-const docsPresent = async () => (await glob(DOCS_DIR + "/*.md")).length > 0
+const docsPresent = async () => (await glob(SPEC_DIR + "/*.md")).length > 0
 if (!(await docsPresent())) {
   await runDesignWrite(true)
 }
@@ -330,7 +334,7 @@ const specWritten = await docsPresent()
 // answer with prose/markdown/XML, which fails schema validation and triggers a
 // slow retry loop (each round-trip is a full model call).
 const design = await agent(
-  "Read the feature document markdown in `" + DOCS_DIR + "` (use the `read` tool; if multiple files, read the most recent) and extract its Tasks list.\n\n" +
+  "Read the feature document markdown in `" + SPEC_DIR + "` (use the `read` tool; if multiple files, read the most recent) and extract its Tasks list.\n\n" +
   (specWritten ? "" : "## No feature document found — derive the task list from the task below instead.\n## Task\n" + TASK + "\n\n") +
   (AMENDS ? "## Amendment\nThis run amends the existing feature \"" + AMENDS + "\". Return the SMALLEST set of tasks that covers the actual change (plus their dependents). One distinct unit of work = exactly one task — do NOT return duplicate or near-identical tasks, and do NOT split a single small change across multiple tasks. OMIT every task unaffected by this change — they are reused as-is.\n\n" : "") +
   "## Output contract (STRICT)\n" +

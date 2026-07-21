@@ -1,11 +1,11 @@
 ---
 name: compose:docs
-description: Use to write or update a feature document — the design + task list after grilling (spec mode), and the delivery report after implementation (report mode). One archived, deliverable file per feature.
+description: Use whenever the feature document needs writing — at design time (record the settled design + task list after grilling) and again at delivery (fill its Report section). One file per feature carries spec, tasks, and report through the whole cycle.
 ---
 
 # Docs — One Feature Document
 
-Each feature gets exactly one markdown file that lives through the whole cycle: design → tasks → delivery report. Save it to the `<compose_docs_dir>` given in your prompt, as `<feature-name>.md`. It is committed to git; history tracks its evolution. User preferences for location override the default.
+A feature has exactly one markdown file, written at two moments: after grilling you create it with the design and task list; after delivery you return and fill its Report section in place. There is never a separate report file. Save it to the `spec/` subdirectory of the `<compose_docs_dir>` given in your prompt, as `spec/<feature-name>.md` — no date in the filename; one feature, one file; `updated:` in the frontmatter and git history carry the timeline. User preferences for location override the default.
 
 ## Document Structure
 
@@ -15,6 +15,7 @@ Head-first: frontmatter, then Report (once delivered), then the design sections.
 ---
 feature: <feature-name>
 status: designed | in-progress | delivered
+updated: YYYY-MM-DD
 branch: <branch-name>
 commits: <first-sha>..<last-sha>   # filled at delivery
 ---
@@ -55,13 +56,13 @@ After writing, one inline pass: placeholders? contradictions between sections? a
 
 ## Amendments
 
-If the feature already has a document, edit it in place — update the affected sections, keep stable anchors, and make the task list contain only the tasks this change requires (plus dependents). Never regenerate from scratch or duplicate near-identical tasks.
+If the feature already has a document, edit it in place — update the affected sections, bump `updated:`, keep stable anchors, and make the task list contain only the tasks this change requires (plus dependents). Never regenerate from scratch or duplicate near-identical tasks.
 
 ## Report (After Delivery)
 
 When implementation is verified, update the same file — the Report at the top becomes the authoritative state, superseding the design sections below it:
 
-1. Frontmatter: set `status: delivered`, fill `commits: <first-sha>..<last-sha>`.
+1. Frontmatter: set `status: delivered`, bump `updated:`, fill `commits: <first-sha>..<last-sha>`.
 2. Check off completed tasks in the Tasks list.
 3. Fill the Report section (overwrite any previous report content in place; keep prior Journey log entries and append):
 

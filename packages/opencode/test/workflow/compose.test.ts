@@ -49,7 +49,7 @@ describe("compose script structure", () => {
     // label and gated by glob (docs dir) / exists (feature document).
     expect(script).toContain('label: "design:"')
     expect(script).toContain('label: "design-extract:"')
-    expect(script).toContain("glob(DOCS_DIR")
+    expect(script).toContain("glob(SPEC_DIR")
     expect(script).toContain("exists(FEATURE_PATH)")
     // The extract agent must force a direct StructuredOutput tool call (avoids the
     // prose→retry loop that stalled the Design phase).
@@ -131,15 +131,15 @@ describe("compose docs dir injection", () => {
   test("design-write + report prompts carry the configured docs dir", async () => {
     const { calls } = await runCompose({ task: "x", type: "feature", _composeDocsDir: "custom/docs" })
     const designWrite = calls.find((c) => c.opts?.label && String(c.opts.label).startsWith("design:"))
-    expect(designWrite!.prompt).toContain("custom/docs")
+    expect(designWrite!.prompt).toContain("custom/docs/spec")
     const report = calls.find((c) => c.opts?.label === "final-report")
-    expect(report!.prompt).toContain("custom/docs")
+    expect(report!.prompt).toContain("custom/docs/spec")
   })
 
   test("defaults to docs/compose when host did not inject", async () => {
     const { calls } = await runCompose({ task: "x", type: "feature" })
     const designWrite = calls.find((c) => c.opts?.label && String(c.opts.label).startsWith("design:"))
-    expect(designWrite!.prompt).toContain("docs/compose")
+    expect(designWrite!.prompt).toContain("docs/compose/spec")
   })
 })
 
@@ -525,7 +525,7 @@ describe("compose E2E smoke", () => {
 })
 
 describe("compose incremental amend", () => {
-  const withExistingDocs = (p: string) => (p.includes(".md") ? ["docs/compose/strutil.md"] : [])
+  const withExistingDocs = (p: string) => (p.includes(".md") ? ["docs/compose/spec/strutil.md"] : [])
 
   test("brainstorm is given the list of existing compose docs", async () => {
     const { calls } = await runCompose(
@@ -543,7 +543,7 @@ describe("compose incremental amend", () => {
       { task: "change truncate ellipsis to unicode …" },
       (prompt, opts) => {
         if (opts?.schema?.properties?.context)
-          return { context: { projectType: "x", conventions: [], recentChanges: [], relevantFiles: [] }, assumptions: [], amends: "strutil", existingDocs: ["docs/compose/strutil.md"] }
+          return { context: { projectType: "x", conventions: [], recentChanges: [], relevantFiles: [] }, assumptions: [], amends: "strutil", existingDocs: ["docs/compose/spec/strutil.md"] }
         return happyAgent(prompt, opts)
       },
       { glob: withExistingDocs },
@@ -580,7 +580,7 @@ describe("compose incremental amend", () => {
 })
 
 describe("compose amend scope-aware fan-out", () => {
-  const existing = (p: string) => (p.includes(".md") ? ["docs/compose/strutil.md"] : [])
+  const existing = (p: string) => (p.includes(".md") ? ["docs/compose/spec/strutil.md"] : [])
   const amendAgent = (prompt: string, opts?: any) => {
     if (opts?.schema?.properties?.context)
       return { context: { projectType: "x", conventions: [], recentChanges: [], relevantFiles: [] }, assumptions: [], amends: "strutil" }
