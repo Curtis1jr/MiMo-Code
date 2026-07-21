@@ -106,9 +106,9 @@ Inspect/manage with `mimo mcp`. Request timeout defaults to 5000ms (`timeout` pe
 
 ## Compose mode
 
-Compose is a specs-driven orchestration agent: it coordinates built-in skills (plan, tdd, debug, review, verify, merge) across the full spec→ship lifecycle. Switch to it with `Tab`.
+Compose is a specs-driven orchestration agent that coordinates three built-in skills across the full spec→ship lifecycle: `compose-grill` (interrogate requirements one question at a time), `compose-spec` (record the settled design + task list as a single feature document, and fill its Report section at delivery), `compose-dev` (implementation contract: workspace isolation, test-first, debug, verify, review gate, finish). Switch to it with `Tab`.
 
-Artifacts land under `docs/compose/` by default (`specs/`, `plans/`, `reports/`). Change the location with `compose.docs`; set `compose.docs_absolute: true` to anchor a relative path to the worktree root.
+Feature documents land at `docs/compose/spec/<feature-name>.md` by default — one file per feature, written at design time and completed at delivery (no separate specs/plans/reports trees). Change the base location with `compose.docs`; set `compose.docs_absolute: true` to anchor a relative path to the worktree root.
 
 For well-defined tasks that split into independent subtasks, prefer the deterministic **`compose` workflow** (fire-and-forget, auto-parallelized) over the agent — see @workflows.md.
 

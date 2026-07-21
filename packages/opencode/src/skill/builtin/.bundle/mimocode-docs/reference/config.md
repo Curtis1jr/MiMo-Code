@@ -174,7 +174,7 @@ As context fills, MiMoCode auto-checkpoints (a background writer distills the co
 | `distill.auto` / `distill.interval_days` | Auto workflow packaging (default true / 30 days) |
 | `voice.asr_model` | ASR model (default `xiaomi/mimo-v2.5-asr`) |
 | `voice.control_model` | Voice control model (default `xiaomi/mimo-v2.5`) |
-| `compose` | Compose mode config (`docs` dir default `docs/compose`, `docs_absolute`) |
+| `compose` | Compose mode config (`docs` base dir default `docs/compose` — feature documents live under `<docs>/spec/`; `docs_absolute`) |
 | `workflow.maxConcurrentAgents` | Process-wide subagent concurrency ceiling (default min(16, 2×cores)) |
 | `workflow.maxDepth` | Max workflow nesting depth (default 8) |
 
