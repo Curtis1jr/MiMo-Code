@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test"
+import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test"
 import { Effect, Layer } from "effect"
 import path from "path"
 import fs from "fs/promises"
@@ -8,11 +8,30 @@ import { Agent } from "../../src/agent/agent"
 import { Skill } from "../../src/skill"
 import * as CrossSpawnSpawner from "../../src/effect/cross-spawn-spawner"
 
-// Force external skills off so that only bundled + project user skills participate,
-// which keeps the fixture deterministic across dev machines.
-process.env.MIMOCODE_DISABLE_EXTERNAL_SKILLS = "true"
-delete process.env.MIMOCODE_DISABLE_BUILTIN_SKILLS
-delete process.env.MIMOCODE_DISABLE_COMPOSE_SKILLS
+// Deterministic fixture: keep only bundled + project user skills. External
+// (~/.claude etc.) is machine-dependent; disable it for the whole file, then
+// restore whatever the env looked like before.
+const savedEnv = {
+  external: process.env.MIMOCODE_DISABLE_EXTERNAL_SKILLS,
+  builtin: process.env.MIMOCODE_DISABLE_BUILTIN_SKILLS,
+  compose: process.env.MIMOCODE_DISABLE_COMPOSE_SKILLS,
+}
+
+beforeAll(() => {
+  process.env.MIMOCODE_DISABLE_EXTERNAL_SKILLS = "true"
+  delete process.env.MIMOCODE_DISABLE_BUILTIN_SKILLS
+  delete process.env.MIMOCODE_DISABLE_COMPOSE_SKILLS
+})
+
+afterAll(() => {
+  const restore = (key: "MIMOCODE_DISABLE_EXTERNAL_SKILLS" | "MIMOCODE_DISABLE_BUILTIN_SKILLS" | "MIMOCODE_DISABLE_COMPOSE_SKILLS", val: string | undefined) => {
+    if (val === undefined) delete process.env[key]
+    else process.env[key] = val
+  }
+  restore("MIMOCODE_DISABLE_EXTERNAL_SKILLS", savedEnv.external)
+  restore("MIMOCODE_DISABLE_BUILTIN_SKILLS", savedEnv.builtin)
+  restore("MIMOCODE_DISABLE_COMPOSE_SKILLS", savedEnv.compose)
+})
 
 function load<A>(dir: string, fn: (agent: Agent.Interface, skill: Skill.Interface) => Effect.Effect<A>) {
   return Effect.runPromise(

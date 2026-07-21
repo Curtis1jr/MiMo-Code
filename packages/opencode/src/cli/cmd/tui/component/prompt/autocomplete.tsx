@@ -386,6 +386,11 @@ export function Autocomplete(props: {
     for (const serverCommand of sync.data.command) {
       if (serverCommand.source === "skill" && Flag.MIMOCODE_DISABLE_SLASH_SKILLS) continue
       const info = serverCommand.source === "skill" ? skills?.get(serverCommand.name) : undefined
+      // A skill command needs its Info to decide the scope gate. Until the
+      // skillMap resource resolves, `info` is undefined for skill entries —
+      // fail closed by hiding the command rather than showing it and later
+      // realizing it was compose-scoped for a non-compose agent.
+      if (serverCommand.source === "skill" && !info) continue
       if (serverCommand.source === "skill" && !isCompose && info?.scope === "compose") continue
       const label = serverCommand.source === "mcp" ? ":mcp" : ""
       const desc = info

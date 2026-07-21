@@ -675,7 +675,7 @@ export const layer = Layer.effect(
         const composeCfg = (yield* config.get()).compose
         const docsDir = ConfigCompose.resolveDocsDir(ctx.worktree, composeCfg)
         const text = PROMPT_COMPOSE
-          .replace("{{compose_docs_dir}}", `Save feature documents in \`${docsDir}\`, one file per feature: \`<feature-name>.md\`.`)
+          .replace("{{compose_docs_dir}}", `Feature documents are written under \`${docsDir}\` (the base compose docs directory). Skills apply their own subdirectory conventions on top — see each skill's guidance for the exact path (e.g. \`compose-spec\` uses \`spec/<feature>.md\`).`)
         composeModeMsg.parts.unshift({
           id: PartID.ascending(),
           messageID: composeModeMsg.info.id,

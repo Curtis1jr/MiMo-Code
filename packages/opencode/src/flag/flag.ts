@@ -269,8 +269,9 @@ export const Flag = {
   // external tooling set these env vars at runtime.
 
   // Disables compose-agent-internal skills (e.g. compose-grill, compose-spec,
-  // compose-dev). Gated via scope=compose in permission (Permission.evaluateSkill)
-  // and in the TUI/search filters; not part of builtin skills.
+  // compose-dev). Skipped at scan time so no scope=compose entries are
+  // discovered. Independent of the scope-based permission / search / TUI
+  // filters, which key off Skill.Info.scope for whatever is discovered.
   get MIMOCODE_DISABLE_COMPOSE_SKILLS() {
     return truthy("MIMOCODE_DISABLE_COMPOSE_SKILLS")
   },

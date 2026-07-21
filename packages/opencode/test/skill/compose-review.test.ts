@@ -9,6 +9,18 @@ describe("compose skill bundle contract", () => {
     expect(Object.keys(bundle).sort()).toEqual(["compose-dev", "compose-grill", "compose-spec"])
   })
 
+  test("bundle directory names match each SKILL.md frontmatter name (1:1 invariant)", () => {
+    // loadComposeBundle no longer synthesizes `compose:${dir}` — the dir IS
+    // the skill name. If someone renames a dir but forgets the frontmatter
+    // (or vice-versa), scan-time scope wiring silently breaks; catch it here.
+    for (const [dirName, files] of Object.entries(bundle)) {
+      const md = files["SKILL.md"]
+      const nameMatch = md.match(/^name:\s*(.+)$/m)
+      expect(nameMatch, `${dirName}/SKILL.md missing frontmatter name`).not.toBeNull()
+      expect(nameMatch![1].trim()).toBe(dirName)
+    }
+  })
+
   describe("grill: interrogation contract", () => {
     const md = () => bundle["compose-grill"]["SKILL.md"]
 
