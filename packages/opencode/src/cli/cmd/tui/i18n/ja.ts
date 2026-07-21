@@ -232,9 +232,9 @@ export const dict = {
   "tui.skill.data-analytics.description": "製品・事業データの分析、KPI 設計、ダッシュボードとレポートの作成",
   "tui.skill.product-design.description": "製品・UX デザインの調査、監査、プロトタイプ作成、検証",
   "tui.skill.sales.description": "商談準備、アカウント調査、案件計画、営業システムの活用",
-  "tui.skill.compose:dev.description": "実装 — テストファースト、検証、レビュー、ブランチの仕上げ",
-  "tui.skill.compose:grill.description": "着手前に要件を一問ずつ問い詰め、共通理解に到達する",
-  "tui.skill.compose:docs.description": "設計・タスク・納品レポートを1つの機能ドキュメントに記録",
+  "tui.skill.compose-dev.description": "実装 — テストファースト、検証、レビュー、ブランチの仕上げ",
+  "tui.skill.compose-grill.description": "着手前に要件を一問ずつ問い詰め、共通理解に到達する",
+  "tui.skill.compose-spec.description": "設計・タスク・納品レポートを1つの機能ドキュメントに記録",
 
   // Language switching
   "tui.command.language.switch.title": "言語を切り替え",

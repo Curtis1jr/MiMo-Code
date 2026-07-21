@@ -5,13 +5,13 @@ export const meta = {
   whenToUse:
     "Use to drive a feature, bugfix, refactor, or review-feedback task through the full compose flow without user prompting. Pass args.task = the user's request. Optionally args.type to set the task type (feature/bugfix/refactor/feedback; otherwise inferred), args.feature_name for the report filename, args.skip_brainstorm / args.skip_report to drop those phases, args.maxConcurrent to bound per-batch parallelism. Independent tasks auto-run in parallel, each in its own worktree, then merge back; pass args.isolate_worktrees=false to force all-sequential or =true to force isolation.",
   phases: [
-    { title: "Brainstorm", detail: "Context recon via compose:grill (autonomous): conventions, recent changes, relevant files" },
-    { title: "Design", detail: "Apply compose:docs; emit feature document with task list + deps" },
+    { title: "Brainstorm", detail: "Context recon via compose-grill (autonomous): conventions, recent changes, relevant files" },
+    { title: "Design", detail: "Apply compose-spec; emit feature document with task list + deps" },
     { title: "Implement", detail: "Topo-sorted batches; independent tasks parallelize in per-task worktrees, then integrate" },
     { title: "Verify", detail: "Run project verify commands; structured pass/fail" },
-    { title: "Review", detail: "compose:dev review gate for critical/important/minor issues" },
-    { title: "Report", detail: "compose:docs report mode — update the feature document's Report section" },
-    { title: "Merge", detail: "compose:dev finish — commit (and optionally push/PR)" },
+    { title: "Review", detail: "compose-dev review gate for critical/important/minor issues" },
+    { title: "Report", detail: "compose-spec report mode — update the feature document's Report section" },
+    { title: "Merge", detail: "compose-dev finish — commit (and optionally push/PR)" },
   ],
 }
 
@@ -165,7 +165,7 @@ const MAX_CONCURRENT =
 // agent. Default keeps the workflow self-sufficient if the host didn't inject.
 const DOCS_DIR = typeof _argsObj._composeDocsDir === "string" && _argsObj._composeDocsDir ? _argsObj._composeDocsDir : "docs/compose"
 // Feature documents live in the spec/ subdirectory of the docs dir — the same
-// convention compose:docs states (subdirectory names are a skill-level contract;
+// convention compose-spec states (subdirectory names are a skill-level contract;
 // the config value stays the base dir).
 const SPEC_DIR = DOCS_DIR + "/spec"
 const docsBlock =
@@ -208,7 +208,7 @@ if (SKIP_BRAINSTORM) {
   brainstorm = { context: SYNTHETIC_CONTEXT, assumptions: [] }
 } else {
   brainstorm = await agent(
-    "Apply the `compose:grill` skill in AUTONOMOUS mode — no user is available to answer. Use the `skill` tool to load it first.\n\n" +
+    "Apply the `compose-grill` skill in AUTONOMOUS mode — no user is available to answer. Use the `skill` tool to load it first.\n\n" +
     "## Autonomous grilling — self-conduct the interview (do NOT stop at context recon)\n" +
     "'No user' means you ask and answer the questions YOURSELF; it does NOT mean skip the thinking. Run the real interview:\n" +
     "1. Explore project context (files, docs, recent commits, layout) and note assumptions.\n" +
@@ -246,7 +246,7 @@ const contextDigest =
 // ---------------------------------------------------------------------------
 // First-principles: task type is a low-risk, reversible routing hint the later
 // Design/Implement phases can self-correct — it does NOT warrant its own LLM
-// phase. All types design through compose:docs; the type only flavors the
+// phase. All types design through compose-spec; the type only flavors the
 // design prompt (bugfix → root-cause first, feedback → verify claims first).
 // Honor an explicit args.type; otherwise default to "feature" and let a cheap
 // keyword heuristic divert obvious bugfix / PR-feedback tasks.
@@ -287,7 +287,7 @@ const AMENDS = brainstorm && typeof brainstorm.amends === "string" ? brainstorm.
 // NOT write it; it only gates on existence and re-dispatches if skipped. No
 // `schema` here so the agent is free to use its write/skill tools.
 const runDesignWrite = (sharpen) => agent(
-  "Apply the `compose:docs` skill to the task below. Use the `skill` tool to load the skill FIRST, then follow it.\n\n" +
+  "Apply the `compose-spec` skill to the task below. Use the `skill` tool to load the skill FIRST, then follow it.\n\n" +
   docsBlock + "\n\n" +
   "## Task\n" + TASK + "\n\n" +
   DESIGN_EMPHASIS[type] +
@@ -361,7 +361,7 @@ if (!design || !Array.isArray(design.tasks) || design.tasks.length === 0) {
     seen[t.id] = true
   }
 }
-log("Designed " + design.tasks.length + " task(s) via compose:docs (doc=" + specWritten + ")")
+log("Designed " + design.tasks.length + " task(s) via compose-spec (doc=" + specWritten + ")")
 
 // Topo-sort (Kahn) over design.tasks by dependsOn → ordered batches.
 const topoSort = (tasks) => {
@@ -409,7 +409,7 @@ const intentBlock =
 // Helpers: implement (per-task, worktree), integrate, verify, debug, report
 // ---------------------------------------------------------------------------
 const runImplementTask = (task, failuresOrEmpty, isolate) => agent(
-  "Apply the `compose:dev` skill. Use the `skill` tool to load it before working.\n\n" +
+  "Apply the `compose-dev` skill. Use the `skill` tool to load it before working.\n\n" +
   "## Overall task\n" + TASK + "\n\n" +
   intentBlock +
   "## Your work item (" + task.id + ")\n" + task.description + "\nAcceptance: " + task.acceptance +
@@ -434,7 +434,7 @@ const runIntegrate = (kept) => agent(
 )
 
 const runVerify = () => agent(
-  "Apply the `compose:dev` skill's Verification discipline. Use the `skill` tool to load it FIRST " +
+  "Apply the `compose-dev` skill's Verification discipline. Use the `skill` tool to load it FIRST " +
   "(no completion claim without fresh verification evidence — run the real commands, read the full output, " +
   "never trust 'should pass' or an agent's self-report).\n\n" +
   "## Run the project's verification commands and report the outcome\n" +
@@ -447,7 +447,7 @@ const runVerify = () => agent(
 )
 
 const runDebug = (failures) => agent(
-  "Apply the `compose:dev` skill's Debugging discipline. Use the `skill` tool to load it before working.\n\n" +
+  "Apply the `compose-dev` skill's Debugging discipline. Use the `skill` tool to load it before working.\n\n" +
   "## Verify failures / integrate conflicts\n" + failures + "\n\n" +
   "Identify the root cause and fix it. Do not paper over symptoms.",
   { label: "debug", phase: "Implement" }
@@ -459,7 +459,7 @@ const runIterationReport = async (iteration, verifyResult) => {
   // would bias the agent into emitting JSON instead of doing the write. The
   // workflow only verifies the file exists afterward.
   await agent(
-    "Apply the `compose:docs` skill in Report mode. Use the `skill` tool to load it first.\n\n" +
+    "Apply the `compose-spec` skill in Report mode. Use the `skill` tool to load it first.\n\n" +
     docsBlock + "\n\n" +
     "## Feature document you MUST update (overwrite Report section in place, accumulate Journey Log)\n" + FEATURE_PATH + "\n\n" +
     "## Iteration\n" + iteration + "\n\n" +
@@ -569,7 +569,7 @@ for (let attempt = 0; attempt < MAX_TDD_ATTEMPTS; attempt++) {
 // ---------------------------------------------------------------------------
 const IMPLEMENTED_DIGEST = design.tasks.map((t) => "- " + t.id + ": " + t.description + " (acceptance: " + t.acceptance + ")").join("\n")
 const runReview = () => agent(
-  "Apply the `compose:dev` skill's Review gate. Use the `skill` tool to load it FIRST, then follow it.\n\n" +
+  "Apply the `compose-dev` skill's Review gate. Use the `skill` tool to load it FIRST, then follow it.\n\n" +
   "Review the implemented change in TWO STAGES, spec-compliance BEFORE code-quality:\n" +
   "### Stage 1 — Spec compliance (evidence-gated)\n" +
   "Run `git diff` (e.g. `git diff HEAD~<n>..HEAD`, or against the run's base) to see EXACTLY what changed, and read the changed files. " +
@@ -588,7 +588,7 @@ const runReview = () => agent(
 )
 
 const runFixTask = (finding, i, isolate) => agent(
-  "Address the CRITICAL review finding below. Apply the `compose:dev` skill's test-first discipline to fix it with tests where possible. " +
+  "Address the CRITICAL review finding below. Apply the `compose-dev` skill's test-first discipline to fix it with tests where possible. " +
   "Use the `skill` tool to load it first.\n\n" +
   "## Critical finding (" + (i + 1) + ")\n" + finding + "\n\n" +
   "Fix it with the `write`/`edit` tools and commit " + (isolate ? "inside this worktree." : "in the workspace."),
@@ -668,7 +668,7 @@ if (!SKIP_REPORT) {
   // The agent finalizes the feature document's Report section; the workflow only
   // gates on existence. No schema — writing the markdown is the deliverable.
   await agent(
-    "Apply the `compose:docs` skill in FINAL Report mode. Use the `skill` tool to load it first.\n\n" +
+    "Apply the `compose-spec` skill in FINAL Report mode. Use the `skill` tool to load it first.\n\n" +
     docsBlock + "\n\n" +
     "## Feature document you MUST finalize (read it, set status: delivered, check off tasks, overwrite the Report section with canonical final state)\n" + FEATURE_PATH + "\n\n" +
     "## Overall task\n" + TASK + "\n\n" +
@@ -685,7 +685,7 @@ if (!SKIP_REPORT) {
   // Re-dispatch once if the agent skipped the write.
   if (!(await exists(FEATURE_PATH))) {
     await agent(
-      "The feature document `" + FEATURE_PATH + "` does not exist yet. Apply `compose:docs` and WRITE it now with the `write` tool " +
+      "The feature document `" + FEATURE_PATH + "` does not exist yet. Apply `compose-spec` and WRITE it now with the `write` tool " +
       "(Problem / Design / Tasks / Report with What was built, Verification, Journey log) for the task: " + TASK,
       { label: "final-report-retry", phase: "Report" }
     )
@@ -698,7 +698,7 @@ if (!SKIP_REPORT) {
 // ---------------------------------------------------------------------------
 phase("Merge")
 const merge = await agent(
-  "Apply the `compose:dev` skill's Finish step. Use the `skill` tool to load it before working.\n\n" +
+  "Apply the `compose-dev` skill's Finish step. Use the `skill` tool to load it before working.\n\n" +
   "## Task\n" + TASK + "\n\n" +
   "## What was built (use this for the commit/PR message)\n" + IMPLEMENTED_DIGEST + "\n\n" +
   ((review && (_arr(review.important).length || _arr(review.minor).length))

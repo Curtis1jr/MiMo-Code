@@ -34,6 +34,7 @@ export const Info = z.object({
   content: z.string(),
   hidden: z.boolean().optional(),
   bundled: z.boolean().optional(),
+  scope: z.string().optional(),
 })
 export type Info = z.infer<typeof Info>
 
@@ -60,14 +61,18 @@ type State = {
   dirs: Set<string>
 }
 
+type ScanMeta = {
+  scope?: string
+}
+
 type DiscoveryState = {
-  matches: string[]
+  matches: Array<{ path: string } & ScanMeta>
   dirs: string[]
   bundledRoots: string[]
 }
 
 type ScanState = {
-  matches: Set<string>
+  matches: Map<string, ScanMeta>
   dirs: Set<string>
 }
 
@@ -79,7 +84,13 @@ export interface Interface {
   readonly reload: () => Effect.Effect<void>
 }
 
-const add = Effect.fnUntraced(function* (state: State, match: string, bundledRoots: string[], bus: Bus.Interface) {
+const add = Effect.fnUntraced(function* (
+  state: State,
+  match: string,
+  meta: ScanMeta,
+  bundledRoots: string[],
+  bus: Bus.Interface,
+) {
   const md = yield* Effect.tryPromise({
     try: () => ConfigMarkdown.parse(match),
     catch: (err) => err,
@@ -128,6 +139,7 @@ const add = Effect.fnUntraced(function* (state: State, match: string, bundledRoo
     content: md.content,
     hidden: parsed.data.hidden,
     bundled: isBundled || undefined,
+    scope: meta.scope,
   }
 })
 
@@ -156,7 +168,7 @@ const scan = Effect.fnUntraced(function* (
   )
 
   for (const match of matches) {
-    state.matches.add(match)
+    state.matches.set(match, { scope: opts?.scope })
     state.dirs.add(path.dirname(match))
   }
 })
@@ -168,7 +180,7 @@ const discoverSkills = Effect.fnUntraced(function* (
   directory: string,
   worktree: string,
 ) {
-  const state: ScanState = { matches: new Set(), dirs: new Set() }
+  const state: ScanState = { matches: new Map(), dirs: new Set() }
   const bundledRoots: string[] = []
 
   // Extract builtin skills to disk first (user skills with same name override)
@@ -183,7 +195,7 @@ const discoverSkills = Effect.fnUntraced(function* (
         const skillsRoot = path.join(builtinSkillRoot, "skills")
         for (const name of OFFICIAL_SKILL_NAMES) {
           const prefix = path.join(skillsRoot, name) + path.sep
-          for (const match of state.matches) {
+          for (const match of state.matches.keys()) {
             if (match.startsWith(prefix)) {
               state.matches.delete(match)
               state.dirs.delete(path.dirname(match))
@@ -253,17 +265,21 @@ const discoverSkills = Effect.fnUntraced(function* (
   }
 
   return {
-    matches: Array.from(state.matches),
+    matches: Array.from(state.matches, ([p, meta]) => ({ path: p, ...meta })),
     dirs: Array.from(state.dirs),
     bundledRoots,
   }
 })
 
 const loadSkills = Effect.fnUntraced(function* (state: State, discovered: DiscoveryState, bus: Bus.Interface) {
-  yield* Effect.forEach(discovered.matches, (match) => add(state, match, discovered.bundledRoots, bus), {
-    concurrency: "unbounded",
-    discard: true,
-  })
+  yield* Effect.forEach(
+    discovered.matches,
+    ({ path: match, ...meta }) => add(state, match, meta, discovered.bundledRoots, bus),
+    {
+      concurrency: "unbounded",
+      discard: true,
+    },
+  )
 
   log.info("init", { count: Object.keys(state.skills).length })
 })
@@ -310,7 +326,7 @@ export const layer = Layer.effect(
 
       list = list.toSorted((a, b) => a.name.localeCompare(b.name))
       if (!agent) return list
-      return list.filter((skill) => Permission.evaluate("skill", skill.name, agent.permission).action !== "deny")
+      return list.filter((skill) => Permission.evaluateSkill(skill, agent.permission).action !== "deny")
     })
 
     const reload = Effect.fn("Skill.reload")(function* () {

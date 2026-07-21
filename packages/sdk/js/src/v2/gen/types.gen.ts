@@ -6783,6 +6783,7 @@ export type AppSkillsResponses = {
     content: string
     hidden?: boolean
     bundled?: boolean
+    scope?: string
   }>
 }
 

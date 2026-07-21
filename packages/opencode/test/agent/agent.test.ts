@@ -132,7 +132,7 @@ test("build agent unaffected — no hardPermission", async () => {
   })
 })
 
-test("compose:* skills are denied for build/plan, allowed for compose", async () => {
+test("scope=compose skills are denied for build/plan, allowed for compose", async () => {
   await using tmp = await tmpdir()
   await Instance.provide({
     directory: tmp.path,
@@ -141,16 +141,12 @@ test("compose:* skills are denied for build/plan, allowed for compose", async ()
       for (const name of ["build", "plan"]) {
         const agent = agents.find((a) => a.name === name)
         expect(agent).toBeDefined()
-        expect(Permission.evaluate("skill", "compose:grill", agent!.permission).action).toBe("deny")
-        expect(Permission.evaluate("skill", "compose:docs", agent!.permission).action).toBe("deny")
-        expect(Permission.evaluate("skill", "compose:dev", agent!.permission).action).toBe("deny")
+        expect(Permission.evaluate("skill", "scope:compose", agent!.permission).action).toBe("deny")
       }
       const compose = agents.find((a) => a.name === "compose")
       expect(compose).toBeDefined()
-      expect(Permission.evaluate("skill", "compose:grill", compose!.permission).action).toBe("allow")
-      expect(Permission.evaluate("skill", "compose:docs", compose!.permission).action).toBe("allow")
-      expect(Permission.evaluate("skill", "compose:dev", compose!.permission).action).toBe("allow")
-      // Non-compose skills remain allowed for all agents
+      expect(Permission.evaluate("skill", "scope:compose", compose!.permission).action).toBe("allow")
+      // Non-compose skills remain allowed for all agents (name path, no scope prefix)
       expect(Permission.evaluate("skill", "effect", agents.find((a) => a.name === "build")!.permission).action).toBe("allow")
       expect(Permission.evaluate("skill", "effect", compose!.permission).action).toBe("allow")
     },

@@ -1,9 +1,9 @@
 ---
-name: compose:docs
+name: compose-spec
 description: Use whenever the feature document needs writing — at design time (record the settled design + task list after grilling) and again at delivery (fill its Report section). One file per feature carries spec, tasks, and report through the whole cycle.
 ---
 
-# Docs — One Feature Document
+# Spec — One Feature Document
 
 A feature has exactly one markdown file, written at two moments: after grilling you create it with the design and task list; after delivery you return and fill its Report section in place. There is never a separate report file. Save it to the `spec/` subdirectory of the `<compose_docs_dir>` given in your prompt, as `spec/<feature-name>.md` — no date in the filename; one feature, one file; `updated:` in the frontmatter and git history carry the timeline. User preferences for location override the default.
 

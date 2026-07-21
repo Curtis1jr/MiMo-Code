@@ -12,7 +12,7 @@ import { withStatics } from "@/util/schema"
 import { Wildcard } from "@/util"
 import { Deferred, Effect, Layer, Schema, Context } from "effect"
 import os from "os"
-import { evaluate as evalRule } from "./evaluate"
+import { evaluate as evalRule, evaluateSkill as evalRuleSkill } from "./evaluate"
 import { PermissionID } from "./schema"
 import { forwardRef } from "./permission-forward-ref"
 import { inboxServiceRef } from "@/inbox/inbox-ref"
@@ -183,6 +183,19 @@ interface State {
 
 export function evaluate(permission: string, pattern: string, ...rulesets: Ruleset[]): Rule {
   return evalRule(permission, pattern, ...rulesets)
+}
+
+/**
+ * Evaluate a skill against permission rulesets using two-tier matching:
+ * more-specific name pattern first, less-specific scope pattern as fallback.
+ * Callers must prefer this over `evaluate("skill", name, ...)` when gating
+ * a skill — scope is the mechanism key, name is the display handle.
+ */
+export function evaluateSkill(
+  target: { name: string; scope?: string },
+  ...rulesets: Ruleset[]
+): Rule {
+  return evalRuleSkill(target, ...rulesets)
 }
 
 // Permissions whose "allow" outcome must ALWAYS come from an explicit human ask.

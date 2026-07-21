@@ -225,9 +225,9 @@ export const dict: Record<string, string> = {
     "Analyze product and business data, design KPIs, and build dashboards and reports",
   "tui.skill.product-design.description": "Research, audit, prototype, and validate product and UX designs",
   "tui.skill.sales.description": "Prepare meetings, research accounts, plan deals, and work with sales systems",
-  "tui.skill.compose:dev.description": "Implement — test-first, verify, review, and finish the branch",
-  "tui.skill.compose:grill.description": "Interrogate requirements one question at a time before building",
-  "tui.skill.compose:docs.description": "Record design, tasks, and delivery report in one feature document",
+  "tui.skill.compose-dev.description": "Implement — test-first, verify, review, and finish the branch",
+  "tui.skill.compose-grill.description": "Interrogate requirements one question at a time before building",
+  "tui.skill.compose-spec.description": "Record design, tasks, and delivery report in one feature document",
 
   // Language switching
   "tui.command.language.switch.title": "Switch language",

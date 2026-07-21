@@ -6,11 +6,11 @@ const bundle = loadComposeBundle()
 
 describe("compose skill bundle contract", () => {
   test("bundle contains exactly the three consolidated skills", () => {
-    expect(Object.keys(bundle).sort()).toEqual(["dev", "docs", "grill"])
+    expect(Object.keys(bundle).sort()).toEqual(["compose-dev", "compose-grill", "compose-spec"])
   })
 
   describe("grill: interrogation contract", () => {
-    const md = () => bundle["grill"]["SKILL.md"]
+    const md = () => bundle["compose-grill"]["SKILL.md"]
 
     test("asks one question at a time with a recommended answer", () => {
       expect(md()).toMatch(/one question/i)
@@ -30,13 +30,13 @@ describe("compose skill bundle contract", () => {
       expect(md()).toMatch(/destructive/i)
     })
 
-    test("hands off to compose:docs", () => {
-      expect(md()).toContain("compose:docs")
+    test("hands off to compose-spec", () => {
+      expect(md()).toContain("compose-spec")
     })
   })
 
   describe("docs: single feature document contract", () => {
-    const md = () => bundle["docs"]["SKILL.md"]
+    const md = () => bundle["compose-spec"]["SKILL.md"]
 
     test("uses stable [Sn] section anchors", () => {
       expect(md()).toMatch(/\[S1\]/)
@@ -64,7 +64,7 @@ describe("compose skill bundle contract", () => {
   })
 
   describe("dev: implementation contract", () => {
-    const md = () => bundle["dev"]["SKILL.md"]
+    const md = () => bundle["compose-dev"]["SKILL.md"]
 
     test("covers isolation, test-first, debugging, verification, review, finish", () => {
       for (const section of ["Workspace", "Test-First", "Debugging", "Verification", "Review", "Finish"]) {

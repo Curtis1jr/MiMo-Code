@@ -300,9 +300,9 @@ export const dict = {
   "tui.skill.product-design.description": "Investigar, auditar, prototipar y validar diseños de producto y UX",
   "tui.skill.sales.description":
     "Preparar reuniones, investigar cuentas, planificar ventas y usar sistemas comerciales",
-  "tui.skill.compose:dev.description": "Implementar — tests primero, verificar, revisar y cerrar la rama",
-  "tui.skill.compose:grill.description": "Interrogar los requisitos pregunta a pregunta antes de construir",
-  "tui.skill.compose:docs.description": "Registrar diseño, tareas e informe de entrega en un solo documento",
+  "tui.skill.compose-dev.description": "Implementar — tests primero, verificar, revisar y cerrar la rama",
+  "tui.skill.compose-grill.description": "Interrogar los requisitos pregunta a pregunta antes de construir",
+  "tui.skill.compose-spec.description": "Registrar diseño, tareas e informe de entrega en un solo documento",
 
   // Language switching
   "tui.command.language.switch.title": "Cambiar idioma",

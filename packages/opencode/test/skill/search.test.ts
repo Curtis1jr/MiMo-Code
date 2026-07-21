@@ -10,6 +10,12 @@ const skill = (name: string, description: string, aliases?: string[]): Skill.Inf
   content: `# ${name}`,
 })
 
+const composeSkill = (name: string, description: string): Skill.Info => ({
+  ...skill(name, description),
+  scope: "compose",
+  bundled: true,
+})
+
 describe("skill.search", () => {
   test("ranks an exact alias match above BM25 matches", () => {
     const results = searchSkills("quarterly-review", [
@@ -94,7 +100,18 @@ describe("skill.search", () => {
     expect(results[0]).toMatchObject({ skill_id: "data-analytics", score: 1 })
   })
 
-  test("excludes compose skills from the searchable manifest", () => {
-    expect(searchSkills("compose:dev", [skill("compose:dev", "Implement with test-first discipline.")])).toEqual([])
+  test("excludes compose skills from the searchable manifest based on scope, not name", () => {
+    // scope=compose is excluded even when the query mentions it by name
+    expect(searchSkills("compose-dev", [composeSkill("compose-dev", "Implement with test-first discipline.")])).toEqual(
+      [],
+    )
+  })
+
+  test("does not exclude user skills that happen to start with 'compose-' when scope is not compose", () => {
+    // A user's project skill named compose-foo (scope=project) must NOT be swept up by the compose gate.
+    const results = searchSkills("compose-foo", [
+      { ...skill("compose-foo", "User skill for composing something unrelated."), scope: "project" },
+    ])
+    expect(results.map((r) => r.skill_id)).toEqual(["compose-foo"])
   })
 })

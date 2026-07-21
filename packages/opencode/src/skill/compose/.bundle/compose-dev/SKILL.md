@@ -1,5 +1,5 @@
 ---
-name: compose:dev
+name: compose-dev
 description: Use when implementing — features, bugfixes, refactors, review feedback. One contract covering workspace isolation, test-first discipline, debugging, verification, the review gate, and finishing the branch (merge/PR).
 ---
 
@@ -62,4 +62,4 @@ Tests green first — never merge/PR with failing tests. Determine the base bran
 - **Discard** — requires explicit confirmation; never auto-approves. If confirmed: cleanup worktree, then `git branch -D`.
 - **Cleanup provenance:** only remove worktrees under `.worktrees/`, `worktrees/`, or `~/.config/compose/worktrees/` (compose-created). Anything else is harness- or user-owned — leave it in place.
 
-Then update the feature document's Report section (`compose:docs`) and commit it.
+Then update the feature document's Report section (`compose-spec`) and commit it.

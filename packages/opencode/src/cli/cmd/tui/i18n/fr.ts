@@ -288,9 +288,9 @@ export const dict = {
   "tui.skill.product-design.description": "Rechercher, auditer, prototyper et valider des designs produit et UX",
   "tui.skill.sales.description":
     "Préparer les rendez-vous, étudier les comptes, planifier les ventes et utiliser les outils commerciaux",
-  "tui.skill.compose:dev.description": "Implémenter — tests d'abord, vérifier, relire et clôturer la branche",
-  "tui.skill.compose:grill.description": "Interroger les besoins question par question avant de construire",
-  "tui.skill.compose:docs.description": "Consigner conception, tâches et rapport de livraison dans un seul document",
+  "tui.skill.compose-dev.description": "Implémenter — tests d'abord, vérifier, relire et clôturer la branche",
+  "tui.skill.compose-grill.description": "Interroger les besoins question par question avant de construire",
+  "tui.skill.compose-spec.description": "Consigner conception, tâches et rapport de livraison dans un seul document",
 
   // Language switching
   "tui.command.language.switch.title": "Changer de langue",

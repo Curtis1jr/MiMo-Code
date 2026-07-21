@@ -303,9 +303,9 @@ export const dict = {
     "Исследование, аудит, прототипирование и проверка дизайна продукта и UX",
   "tui.skill.sales.description":
     "Подготовка встреч, исследование клиентов, планирование сделок и работа с системами продаж",
-  "tui.skill.compose:dev.description": "Реализация — сначала тесты, затем проверка, ревью и завершение ветки",
-  "tui.skill.compose:grill.description": "Допрос требований по одному вопросу до общего понимания",
-  "tui.skill.compose:docs.description": "Дизайн, задачи и отчёт о поставке в одном документе фичи",
+  "tui.skill.compose-dev.description": "Реализация — сначала тесты, затем проверка, ревью и завершение ветки",
+  "tui.skill.compose-grill.description": "Допрос требований по одному вопросу до общего понимания",
+  "tui.skill.compose-spec.description": "Дизайн, задачи и отчёт о поставке в одном документе фичи",
 
   // Language switching
   "tui.command.language.switch.title": "Сменить язык",

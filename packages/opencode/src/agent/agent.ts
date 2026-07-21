@@ -107,7 +107,7 @@ export const layer = Layer.effect(
           doom_loop: "ask",
           skill: {
             "*": "allow",
-            "compose:*": "deny",
+            "scope:compose": "deny",
           },
           plan_enter: "deny",
           plan_exit: "deny",
@@ -216,7 +216,7 @@ export const layer = Layer.effect(
               defaults,
               Permission.fromConfig({
                 question: "allow",
-                skill: { "compose:*": "allow" },
+                skill: { "scope:compose": "allow" },
               }),
               user,
             ),

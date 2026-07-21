@@ -62,7 +62,7 @@ function tokenize(value: string) {
 }
 
 export function searchSkills(query: string, skills: Skill.Info[]): SearchResult[] {
-  const searchable = skills.filter((skill) => !skill.name.startsWith("compose:"))
+  const searchable = skills.filter((skill) => skill.scope !== "compose")
   const exact = searchable
     .filter((skill) =>
       [skill.name, ...(skill.aliases ?? []), ...localizedAliases(skill)].some((value) =>

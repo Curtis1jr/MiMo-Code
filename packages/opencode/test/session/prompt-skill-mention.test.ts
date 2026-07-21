@@ -9,14 +9,14 @@ function extractMentions(text: string) {
 }
 
 describe("skill mention regex", () => {
-  test("captures colon-namespaced skills", () => {
-    expect(extractMentions("please use /compose:dev for this")).toEqual(["compose:dev"])
+  test("captures a namespaced compose skill", () => {
+    expect(extractMentions("please use /compose-dev for this")).toEqual(["compose-dev"])
   })
 
-  test("captures multiple colon-namespaced skills", () => {
-    expect(extractMentions("use /compose:docs and /compose:dev together")).toEqual([
-      "compose:docs",
-      "compose:dev",
+  test("captures multiple namespaced compose skills", () => {
+    expect(extractMentions("use /compose-spec and /compose-dev together")).toEqual([
+      "compose-spec",
+      "compose-dev",
     ])
   })
 
@@ -37,7 +37,7 @@ describe("skill mention regex", () => {
   })
 
   test("captures skill at start of string", () => {
-    expect(extractMentions("/compose:grill then implement")).toEqual(["compose:grill"])
+    expect(extractMentions("/compose-grill then implement")).toEqual(["compose-grill"])
   })
 
   test("does not capture names starting with a digit", () => {

@@ -31,6 +31,7 @@ describe("bundled skill discovery", () => {
 
           const dataAnalytics = list.find((item) => item.name === "data-analytics")
           expect(dataAnalytics).toBeDefined()
+          expect(dataAnalytics!.scope).toBe("builtin")
           expect(
             yield* Effect.promise(() =>
               Bun.file(
@@ -44,12 +45,14 @@ describe("bundled skill discovery", () => {
             ),
           ).toBe(true)
 
-          expect(
-            list
-              .filter((item) => item.name.startsWith("compose:"))
-              .map((item) => item.name)
-              .toSorted(),
-          ).toEqual(Object.keys(loadComposeBundle()).map((name) => `compose:${name}`).toSorted())
+          const composeSkills = list.filter((item) => item.scope === "compose")
+          expect(composeSkills.map((item) => item.name).toSorted()).toEqual(
+            Object.keys(loadComposeBundle()).toSorted(),
+          )
+          // Every compose skill must carry scope=compose (mechanism key, not name prefix)
+          for (const s of composeSkills) {
+            expect(s.scope).toBe("compose")
+          }
         }),
       { git: true },
     ),

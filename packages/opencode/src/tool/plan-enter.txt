@@ -13,4 +13,4 @@ Do NOT call this tool:
 - If you are already in plan mode
 - For simple, straightforward tasks
 - When the user explicitly wants immediate implementation
-- If you are in compose mode (use compose:docs skill instead)
+- If you are in compose mode (use compose-spec skill instead)

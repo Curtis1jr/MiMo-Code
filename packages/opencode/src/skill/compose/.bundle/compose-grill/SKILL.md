@@ -1,6 +1,6 @@
 ---
-name: compose:grill
-description: Use before creative or ambiguous work — new features, behavior changes, design decisions. Interviews the user one question at a time until shared understanding, then hands off to compose:docs.
+name: compose-grill
+description: Use before creative or ambiguous work — new features, behavior changes, design decisions. Interviews the user one question at a time until shared understanding, then hands off to compose-spec.
 ---
 
 # Grill — Requirements Interrogation
@@ -34,4 +34,4 @@ Most questions are text — ASCII sketches, option tables, and mermaid blocks in
 
 ## Exit
 
-The interview ends when the user confirms shared understanding (autonomous: when every open branch is resolved). Then invoke `compose:docs` to record the design and task list. For trivially small, fully-constrained changes, skip the document and go straight to `compose:dev` with the understanding kept in conversation.
+The interview ends when the user confirms shared understanding (autonomous: when every open branch is resolved). Then invoke `compose-spec` to record the design and task list. For trivially small, fully-constrained changes, skip the document and go straight to `compose-dev` with the understanding kept in conversation.

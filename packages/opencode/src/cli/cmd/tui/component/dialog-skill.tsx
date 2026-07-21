@@ -26,7 +26,7 @@ export function DialogSkill(props: DialogSkillProps) {
     let list = skills() ?? []
     const isCompose = local.agent.current()?.name === "compose"
     if (!isCompose) {
-      list = list.filter((s) => !s.name.startsWith("compose:"))
+      list = list.filter((s) => s.scope !== "compose")
     }
     const maxWidth = Math.max(0, ...list.map((s) => s.name.length))
     return list.map((skill) => ({

@@ -33,7 +33,7 @@ describe("compose script structure", () => {
 
   test("each phase applies its compose skill (verify included)", () => {
     const script = composeScript()
-    for (const skill of ["compose:grill", "compose:docs", "compose:dev"]) {
+    for (const skill of ["compose-grill", "compose-spec", "compose-dev"]) {
       expect(script).toContain(skill)
     }
     // Retired skills must be gone from the script.
@@ -117,7 +117,7 @@ describe("compose phase 0: Brainstorm", () => {
     const bs = calls.find((c) => c.opts?.schema?.properties?.context)
     expect(bs).toBeDefined()
     expect(bs!.opts.label).toBe("brainstorm")
-    expect(bs!.prompt).toContain("compose:grill")
+    expect(bs!.prompt).toContain("compose-grill")
     expect(bs!.prompt).toContain("AUTONOMOUS")
   })
 
@@ -191,11 +191,11 @@ describe("compose type resolution (no Classify phase)", () => {
     expect(designWrite!.prompt).toContain("Review-feedback discipline")
   })
 
-  test("default (no keyword, no args.type) routes to compose:docs with no extra emphasis", async () => {
+  test("default (no keyword, no args.type) routes to compose-spec with no extra emphasis", async () => {
     const { calls } = await runCompose({ task: "implement a brand new widget gallery" })
     const designWrite = calls.find((c) => c.opts?.label && String(c.opts.label).startsWith("design:"))
     expect(designWrite!.opts.label).toBe("design:feature")
-    expect(designWrite!.prompt).toContain("compose:docs")
+    expect(designWrite!.prompt).toContain("compose-spec")
   })
 })
 
@@ -205,7 +205,7 @@ describe("compose phase 2: Design", () => {
     ["refactor", ""],
     ["bugfix", "ROOT CAUSE"],
     ["feedback", "Review-feedback discipline"],
-  ])("type=%s routes the design-write agent to compose:docs (emphasis: %s)", async (type, emphasis) => {
+  ])("type=%s routes the design-write agent to compose-spec (emphasis: %s)", async (type, emphasis) => {
     const { calls } = await runCompose({ task: "x", type }, (prompt, opts) => {
       if (opts?.schema?.properties?.context) return { context: { projectType: "x", conventions: [], recentChanges: [], relevantFiles: [] }, assumptions: [] }
       if (opts?.schema?.properties?.tasks) return { tasks: [{ id: "t1", description: "d", acceptance: "a" }] }
@@ -213,7 +213,7 @@ describe("compose phase 2: Design", () => {
     })
     const designWrite = calls.find((c) => c.opts?.label && String(c.opts.label).startsWith("design:"))
     expect(designWrite).toBeDefined()
-    expect(designWrite!.prompt).toContain("compose:docs")
+    expect(designWrite!.prompt).toContain("compose-spec")
     if (emphasis) expect(designWrite!.prompt).toContain(emphasis)
   })
 
