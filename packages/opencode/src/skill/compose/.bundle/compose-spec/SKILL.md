@@ -1,15 +1,13 @@
 ---
 name: compose-spec
-description: Use whenever the feature document needs writing — at design time (record the settled design + task list after grilling) and again at delivery (fill its Report section). One file per feature carries spec, tasks, and report through the whole cycle.
+description: Use when a feature document must be created or amended after requirements settle, or when its Report must be finalized before branch completion. Keep design, tasks, and delivery evidence in one file.
 ---
 
-# Spec — One Feature Document
+# Spec
 
-A feature has exactly one markdown file, written at two moments: after grilling you create it with the design and task list; after delivery you return and fill its Report section in place. There is never a separate report file. Save it to the `spec/` subdirectory of the `<compose_docs_dir>` given in your prompt, as `spec/<feature-name>.md` — no date in the filename; one feature, one file; `updated:` in the frontmatter and git history carry the timeline. User preferences for location override the default.
+Maintain one document per feature at `spec/<feature-name>.md` under the `<compose_docs_dir>` from the prompt. Do not add a date to the filename. A user-specified location overrides this path. Edit an existing document in place; never create a separate plan or report.
 
-## Document Structure
-
-Head-first: frontmatter, then Report (once delivered), then the design sections. A reader — human or model — learns the current state from the first screenful; the design record sits below as history.
+## Template
 
 ```markdown
 ---
@@ -17,70 +15,59 @@ feature: <feature-name>
 status: designed | in-progress | delivered
 updated: YYYY-MM-DD
 branch: <branch-name>
-commits: <first-sha>..<last-sha>   # filled at delivery
+commits: <base-sha>..<head-sha> # filled at delivery
 ---
 
 # <Feature Name>
 
 ## Report
-(Empty at design time. Filled at delivery — becomes the authoritative
-summary; see "Report (After Delivery)" below.)
 
 ## [S1] Problem
-What the user is facing, from the user's perspective.
+Describe the user-visible problem.
 
 ## [S2] Design
-The settled decisions from grilling: approach, architecture, interfaces,
-data flow, error handling, testing seams. Record decisions ("we chose X
-because Y"), not exploration history. No file-level code dumps — types,
-signatures, and contracts where precision matters.
+Record the chosen behavior and the contracts needed to implement it.
 
 ## [S3] Out of Scope
-What this feature explicitly does not do.
+State explicit boundaries.
 
 ## Tasks
-- [ ] T1: <description> — acceptance: <verifiable criterion> (covers: S2)
-- [ ] T2: <description> — acceptance: <criterion> (depends: T1)
+- [ ] T1: <work item> - acceptance: <observable result> (covers: S2)
+- [ ] T2: <work item> - acceptance: <observable result> (covers: S2; depends: T1)
 ```
 
-Rules:
+## Design-Time Rules
 
-- **Section anchors** `[Sn]` are stable IDs. Reworded headings keep their ID; never renumber — task `covers:` references and reviews depend on them.
-- **Tasks are right-sized**: the smallest unit with its own verifiable acceptance criterion. `depends:` names prerequisite task IDs (omit when independent; no cycles). Every task that produces spec-required behavior lists at least one `covers:`.
-- **No placeholders.** "TBD", "handle edge cases", "similar to T2" are spec failures — write the actual content or cut the section.
-- **Scale to the work.** A small fix needs a few sentences per section; don't pad.
+- Leave `Report` empty and set `status: designed`.
+- Keep `[Sn]` anchors stable when headings change; never renumber existing anchors.
+- Record settled decisions and precise contracts, not exploration history or file-level code dumps. Include architecture, interfaces, data flow, error behavior, and testing boundaries when they affect the change.
+- Make each task the smallest independently verifiable work item and give it an acceptance criterion. Add `depends:` only for real prerequisites; dependencies must be acyclic.
+- Add `covers:` for every task implementing a design section. Every design requirement must be covered by at least one task, and every reference must resolve.
+- Remove placeholders such as `TBD`, "handle edge cases", and references to unspecified similar work.
+- Scale detail to the change; do not pad small designs.
 
-## Self-Review
-
-After writing, one inline pass: placeholders? contradictions between sections? any requirement interpretable two ways? every task's acceptance actually verifiable? coverage in both directions — every design-bearing `[Sn]` section has a task whose `covers:` lists it, and every `covers:` resolves to a real section? Fix inline and move on. If a user is available, ask them to review the document (question tool) before implementation; autonomous: proceed.
+Before implementation, fix ambiguous requirements, contradictions, unresolved references, and unverifiable acceptance criteria. If the user is available, request document approval with the `question` tool; otherwise continue.
 
 ## Amendments
 
-If the feature already has a document, edit it in place — update the affected sections, bump `updated:`, keep stable anchors, and make the task list contain only the tasks this change requires (plus dependents). Never regenerate from scratch or duplicate near-identical tasks.
+Update only affected sections, bump `updated:`, preserve anchors, and keep only the tasks required by the amendment and their dependents. Do not regenerate the document or create duplicate tasks.
 
-## Report (After Delivery)
+## Delivery
 
-When implementation is verified, update the same file — the Report at the top becomes the authoritative state, superseding the design sections below it:
+After implementation, verification, and review, finalize this document before merge or PR completion:
 
-1. Frontmatter: set `status: delivered`, bump `updated:`, fill `commits: <first-sha>..<last-sha>`.
-2. Check off completed tasks in the Tasks list.
-3. Fill the Report section (overwrite any previous report content in place; keep prior Journey log entries and append):
+1. Set `status: delivered`, bump `updated:`, and record the reviewed range as `<base-sha>..<head-sha>`.
+2. Check off completed tasks; leave incomplete tasks unchecked and do not claim delivery if they block acceptance.
+3. Replace `Report` with:
 
 ```markdown
 ## Report
 
-> Delivered. This section supersedes the design sections below —
-> they record what was planned; this records what shipped. Code is truth.
+**What was built** - 1-3 concise paragraphs describing the final behavior.
 
-**What was built** — 1-3 paragraphs, final state, written as if the
-feature always existed. A new team member understands it from this alone.
+**Verification** - commands run and their observed results.
 
-**Verification** — what was run and its actual output summary.
-
-**Journey log** — max 5 bullets, only ones that help a future designer:
-- [dead end] Tried X — failed because Y
-- [pivot] Switched from A to B after discovering C
-- [lesson] Transferable insight
+**Journey log** - at most 5 entries that help future work: dead ends, pivots, or transferable lessons. Preserve useful prior entries and append new ones.
 ```
 
-If the Design section actively misleads (not just lags — contradicts what shipped), fix that section too. Then commit the document.
+Update a design section only when it contradicts the delivered behavior. Commit the finalized document on the feature branch before finishing the branch.

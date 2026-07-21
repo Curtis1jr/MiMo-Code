@@ -30,16 +30,21 @@ describe("compose skill bundle contract", () => {
     })
 
     test("facts from the environment, decisions from the user", () => {
-      expect(md()).toMatch(/explor(e|ing) the codebase/i)
+      expect(md()).toMatch(/Inspect the repository/i)
+      expect(md()).toMatch(/facts available from the environment/i)
     })
 
     test("routes questions through the question tool, never prose", () => {
       expect(md()).toContain("`question` tool")
+      expect(md()).toContain("`options: []`")
     })
 
-    test("has an autonomous mode that never auto-approves destructive actions", () => {
-      expect(md()).toMatch(/autonomous/i)
+    test("handles absent user input without auto-approving destructive actions", () => {
+      expect(md()).toMatch(/Without User Input/i)
+      expect(md()).toMatch(/marked `\(Recommended\)`/i)
       expect(md()).toMatch(/destructive/i)
+      expect(md()).toMatch(/only to the current decision/i)
+      expect(md()).toMatch(/call the `question` tool again/i)
     })
 
     test("hands off to compose-spec", () => {
@@ -58,6 +63,7 @@ describe("compose skill bundle contract", () => {
     test("tasks carry acceptance criteria and covers references", () => {
       expect(md()).toMatch(/acceptance/i)
       expect(md()).toMatch(/covers/i)
+      expect(md()).toMatch(/smallest independently verifiable/i)
     })
 
     test("forbids placeholders", () => {
@@ -69,9 +75,15 @@ describe("compose skill bundle contract", () => {
       expect(md()).toMatch(/in place/i)
     })
 
-    test("report section is part of the same document, code is truth", () => {
+    test("report section and journey log stay in the same feature document", () => {
       expect(md()).toContain("## Report")
-      expect(md()).toMatch(/code is truth/i)
+      expect(md()).toMatch(/one document per feature/i)
+      expect(md()).toMatch(/Journey log/i)
+    })
+
+    test("finalizes and commits the report before branch completion", () => {
+      expect(md()).toMatch(/before merge or PR completion/i)
+      expect(md()).toMatch(/feature branch before finishing/i)
     })
   })
 
@@ -79,13 +91,14 @@ describe("compose skill bundle contract", () => {
     const md = () => bundle["compose-dev"]["SKILL.md"]
 
     test("covers isolation, test-first, debugging, verification, review, finish", () => {
-      for (const section of ["Workspace", "Test-First", "Debugging", "Verification", "Review", "Finish"]) {
+      for (const section of ["Workspace", "Implement", "Verify", "Review", "Finish"]) {
         expect(md()).toContain(section)
       }
+      expect(md()).toMatch(/root cause/i)
     })
 
     test("test-first is a decision rule, not an unconditional gate", () => {
-      expect(md()).toMatch(/cheap failing test/i)
+      expect(md()).toMatch(/cheap reproduction/i)
       expect(md()).toMatch(/Skip test-first/i)
     })
 
@@ -93,17 +106,18 @@ describe("compose skill bundle contract", () => {
       expect(md()).toMatch(/fresh evidence/i)
     })
 
-    test("review is one pass with explicit multi-angle lenses (spec compliance + beyond-spec correctness + codebase consistency)", () => {
+    test("review requires explicit conclusions for spec compliance, correctness, and codebase consistency", () => {
       expect(md()).toMatch(/spec compliance/i)
-      expect(md()).toMatch(/beyond the spec/i)
-      expect(md()).toMatch(/consistency with the codebase/i)
-      // Per-angle conclusion, not a blanket verdict — anti-rubber-stamp guard.
-      expect(md()).toMatch(/conclusion per angle/i)
+      expect(md()).toMatch(/Correctness:/i)
+      expect(md()).toMatch(/Codebase consistency:/i)
+      expect(md()).toMatch(/separate conclusions/i)
     })
 
-    test("reviewers get the diff, not the implementer's report", () => {
-      expect(md()).toMatch(/NOT the implementer's report/i)
-      expect(md()).toMatch(/git diff/)
+    test("reviewers get exact revision coordinates and a compact verification summary", () => {
+      expect(md()).toMatch(/base SHA, head SHA/i)
+      expect(md()).toMatch(/compact verification summary/i)
+      expect(md()).toMatch(/Do not paste full command output/i)
+      expect(md()).toMatch(/implementer-authored narrative/i)
     })
 
     test("reviewer subagent is told the worktree path and base branch to diff against", () => {
@@ -114,14 +128,31 @@ describe("compose skill bundle contract", () => {
       expect(md()).toMatch(/base branch/i)
     })
 
+    test("reviewer is at least as capable as the implementer", () => {
+      expect(md()).toMatch(/at least as capable/i)
+    })
+
+    test("verification finishes before review and passing heavy tests are not repeated", () => {
+      expect(md()).toMatch(/Verification and review are sequential/i)
+      expect(md()).toMatch(/wait for all verification commands to exit/i)
+      expect(md()).toMatch(/must not repeat a command already reported as passing/i)
+      expect(md()).toMatch(/heavy E2E suite/i)
+    })
+
+    test("workspace contract names the linked-worktree command", () => {
+      expect(md()).toContain('git worktree add "$path" -b "$branch"')
+      expect(md()).toMatch(/\.worktrees\/.*wins when both exist/i)
+    })
+
     test("finish verifies tests before merge and never auto-discards", () => {
-      expect(md()).toMatch(/Tests green first/i)
-      expect(md()).toMatch(/never auto-approves/i)
+      expect(md()).toMatch(/verification is green/i)
+      expect(md()).toMatch(/Never auto-discard/i)
     })
 
     test("never cleans up harness-owned worktrees", () => {
-      expect(md()).toMatch(/harness- or user-owned/i)
-      expect(md()).toMatch(/provenance/i)
+      expect(md()).toMatch(/harness- and user-owned/i)
+      expect(md()).toMatch(/Only remove worktrees/i)
+      expect(md()).toContain("git worktree prune")
     })
   })
 

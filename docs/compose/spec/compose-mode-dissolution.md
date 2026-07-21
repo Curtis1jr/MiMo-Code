@@ -56,18 +56,16 @@ The consolidation this document builds on — already merged on this branch:
     design `[Sn]` sections → Tasks), written at two moments (design, then
     Report filled in place at delivery — no separate report file),
     amendment-in-place, bidirectional coverage self-review.
-  - `compose:dev` (65 lines) — implementation contract: worktree isolation
-    (detect-first, `.worktrees/`, ignore-check, preference memory), decision-rule
-    test-first, root-cause debugging, evidence-gated verification, two-gate
-    review (spec compliance compose-specific; code quality via fresh-eyes
-    reviewer), subagent dispatch (model tiers, reviewer ≥ implementer,
-    anti-anchoring), ordered finish (merge/PR/keep/discard, cleanup provenance).
-- **compose.txt** (~43 lines): 6-step re-entrant sequence folded into the
-  skill list itself (each skill's responsibility implies its slot in the
-  cycle — Align/Spec via grill+docs, Implement/Review via dev, Report via
-  docs, Finish via dev); decision rules instead of mandatory-invocation
-  wording; environment conventions; `<compose_docs_dir>` block at tail as
-  its own "Output Directory" section.
+  - `compose:dev` — implementation contract: workspace isolation, decision-rule
+    test-first, root-cause debugging, evidence-gated verification, one
+    fresh-eyes review with explicit conclusions for spec compliance,
+    correctness, and codebase consistency, then report-before-finish branch
+    handling with provenance-safe cleanup.
+- **compose.txt**: routes work through the three skills, requires loading the
+  applicable contract before use, defines headless decision behavior, and
+  carries only cross-skill execution rules plus the `<compose_docs_dir>` block.
+  Detailed workspace, testing, review, and finish rules live in `compose-dev`
+  instead of being duplicated in the top-level prompt.
 - **compose.js workflow** (749 lines) unchanged in structure; prompts reference
   the new skill names and the `spec/<feature>.md` feature-document path.
 

@@ -1,37 +1,38 @@
 ---
 name: compose-grill
-description: Use before creative or ambiguous work — new features, behavior changes, design decisions. Interviews the user one decision at a time until shared understanding, then hands off to compose-spec.
+description: Use when a feature, behavior change, or design decision is ambiguous. Resolve requirements one decision at a time, then hand the settled scope to compose-spec.
 ---
 
-# Grill — Requirements Interrogation
+# Grill
 
-Interview the user relentlessly about the task until you reach a shared understanding. Treat the plan as a tree of unresolved decisions: walk down each branch, resolving dependencies between decisions one by one — a parent decision settled before the choices that hang off it.
+Inspect the repository, its instructions, and recent changes before asking anything. Do not ask the user for facts available from the environment.
 
-## Rules of the Interview
+## Resolve Decisions
 
-- **One decision per turn.** A decision is one branch of the tree — one axis whose answer unblocks the next question. Never bundle unrelated decisions ("should we revert AND how does CI change AND when is sprint?") — each answer must inform the NEXT decision, and mixing axes just confuses the user. When a single decision genuinely has multiple must-answer parameters (e.g. revert vs keep + how to respond to the feedback + which branch), collect them as one structured `question` call rather than dragging them across turns. The tree, not the arithmetic, sets the pace.
-- **Recommend an answer with every question.** Take a position with reasoning — the user reacts to a proposal, not a blank prompt.
-- **Facts from the environment, decisions from the user.** If a question can be answered by exploring the codebase (files, docs, recent commits), look it up instead of asking. Only genuine decisions go to the user. Explore project context FIRST — before the first question, not after.
-- **Scope first.** If the request spans multiple independent subsystems, surface the decomposition before refining details of any one piece — each sub-project then gets its own grill → docs → dev cycle.
-- **Propose alternatives.** For load-bearing design decisions, offer 2-3 approaches with trade-offs, leading with your recommendation — don't converge on the first workable idea.
-- Do not write code or start implementation until shared understanding is confirmed (or you are autonomous — see below).
+- Ask about one decision axis at a time. A single decision may include multiple dependent fields in one structured question; unrelated decisions require separate turns.
+- Recommend one option and give the relevant trade-off. For consequential choices, include 2-3 viable alternatives.
+- Split requests spanning independent subsystems before refining each part.
+- Do not implement until the requirements and scope are settled.
 
-## How to Ask
+Use the `question` tool for every user decision:
 
-Every question goes through the `question` tool — never prose ("Should I proceed?" ends your turn without finishing the task).
+- Put known choices in `options`. Give each option a concise `label` and a `description` explaining the consequence; list the recommendation first and mark its label `(Recommended)`.
+- When choices cannot be enumerated, still call `question` and pass `options: []` to request free-text input.
+- Do not ask for permission to continue when no decision remains.
 
-- Known choices → `options` with label + description; put your recommendation first, marked "(Recommended)".
-- Open-ended → empty `options` (renders as free-text input).
-- One concern per question; unrelated decisions are separate questions.
+Use text, ASCII, tables, or Mermaid when they are enough to decide. If visual comparison requires rendering, create a temporary preview with available tools, ask before opening a browser, and remove temporary files afterward. When no user is available, remain text-only.
 
-## Autonomous Mode
+## Without User Input
 
-When no user is available (question tool absent, or a `[Never-Ask]` response): conduct the interview with yourself. Pose the questions you would have asked, answer each from project context and best judgment, state your choices and reasoning in your response text, and continue. Prefer text-only, non-interactive, minimal-scope answers. Destructive or irreversible choices never auto-approve — take the non-destructive path. This applies to the current question only — ask normally at the next decision point; the user may have returned.
+If the question tool is unavailable or returns `[Never-Ask]`, resolve that decision yourself and continue the workflow:
 
-## Visual Aids
+1. Choose the option marked `(Recommended)` when repository evidence still supports it and it can run unattended.
+2. Otherwise choose the closest minimal-scope option supported by the evidence.
+3. If the decision includes destructive or irreversible work, choose a non-destructive path that preserves progress; never auto-approve the destructive option.
+4. State the option selected and the reason in the response.
 
-Most questions are text — ASCII sketches, option tables, and mermaid blocks in your normal output cover layout and architecture discussions. If a decision genuinely can't be judged without seeing it rendered (competing UI mockups, a complex diagram), improvise with what the environment offers: write a throwaway HTML file and ask the user to open it, or use any preview tool available. Ask consent before opening a browser; clean up throwaway files afterwards. Headless: always text-only.
+This fallback applies only to the current decision. At every later decision point, call the `question` tool again; `[Never-Ask]` does not disable future questions or pause the workflow.
 
 ## Exit
 
-The interview ends when the user confirms shared understanding (autonomous: when every open branch is resolved). Then invoke `compose-spec` to record the design and task list. For trivially small, fully-constrained changes, skip the document and go straight to `compose-dev` with the understanding kept in conversation.
+When no unresolved decision can change the implementation, invoke `compose-spec`. For a fully constrained mechanical change that needs no durable feature document, invoke `compose-dev` directly.
