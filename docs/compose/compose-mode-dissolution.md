@@ -71,26 +71,44 @@ The consolidation this document builds on — already merged on this branch:
 
 ## [S3] Target Architecture
 
-### Skills become builtin, hyphen-named, soft-gated
+### Skills become builtin, hyphen-named, scope-tracked, soft-gated
 
 Move `grill`, `docs`, `dev` from `skill/compose/.bundle/` to
-`skill/builtin/.bundle/` as `compose-grill`, `compose-docs`, `compose-dev`.
-Future splits (e.g. `compose-review`) are additive directory drops —
-free composition, no mechanism changes.
+`skill/builtin/.bundle/` as `compose-grill`, `compose-docs`, `compose-dev`,
+**retaining `scope: "compose"` metadata** on the scanned entries. Future
+splits (e.g. `compose-review`) are additive directory drops — free
+composition, no mechanism changes.
 
-- **Naming:** `compose-` prefix, no colon. Stable across the mode's removal;
-  also parses cleanly in slash-mention contexts.
+- **Scope is the mechanism key; the name is pure UX.** All special-casing
+  (search exclusion, kill switch, any future filtering) keys on the structured
+  `scope` field, never on name prefixes. Today's `name.startsWith("compose:")`
+  string checks (`search.ts:65`, `localized-alias.ts:8`) are replaced by scope
+  checks — renaming a skill never touches filter logic.
+- **Naming:** `compose-` prefix, no colon — readable, groups in listings,
+  parses cleanly in slash-mention contexts. Carries no mechanical meaning.
 - **Soft gate (probabilistic):** each description begins with an activation
   clause — "Only after the user has activated /compose (or explicitly asks for
   compose discipline). Not for routine work." Models respect described trigger
   conditions well; this is the everyday gate.
-- **Hard gate (deterministic, opt-out):** a config flag
-  (`compose.skills: false` or reuse `MIMOCODE_DISABLE_COMPOSE_SKILLS`) maps to
-  permission `"compose-*": "deny"` for all agents — precise kill switch for
-  users who never want them, independent of model judgment.
-- **skill_search exclusion** keyed on `compose-` prefix (replacing the
-  `compose:` check in `search.ts:65`) so they never auto-load via search;
-  reachable only by name or via /compose.
+- **Hard gate (deterministic), two layers — neither uses permission deny.**
+  Permission-based deny is evaluated per-agent, which makes the available-skills
+  list differ between agents in one session (unstable prompt prefix, cache
+  misses, and /compose could reference skills absent from the current list).
+  Instead:
+  1. **Scan-time exclusion** — config flag (`compose.skills: false` /
+     `MIMOCODE_DISABLE_COMPOSE_SKILLS`) drops scope=compose entries at
+     discovery. List is stable for the whole session (uniformly absent);
+     zero token cost for users who never want them.
+  2. **Invoke-time refusal (optional hardening)** — the `skill` tool rejects
+     scope=compose invocations until /compose has run in the session,
+     returning "compose skills require /compose activation first". The list
+     stays uniformly present and cache-stable; the refusal message itself
+     steers the model. This upgrades the soft gate to deterministic without
+     touching list composition — adopt only if description-gating proves
+     insufficient in step-1 observation.
+- **skill_search exclusion** keyed on scope=compose (replacing the prefix
+  check) so they never auto-load via search; reachable only by name or via
+  /compose.
 
 ### /compose becomes a slash command
 
@@ -180,7 +198,7 @@ no return for the mode; 4–5 generalize the pattern.
 ## Tasks
 
 - [x] T0: consolidate skills to grill/docs/dev, slim compose.txt — acceptance: tests green, typecheck clean (covers: S2)
-- [ ] T1: move skills to builtin as compose-grill/docs/dev with activation-clause descriptions — acceptance: skills visible in build agent, not auto-triggered without /compose in test prompts; kill-switch flag denies compose-* (covers: S3)
+- [ ] T1: move skills to builtin as compose-grill/docs/dev with scope=compose metadata and activation-clause descriptions — acceptance: skills visible in build agent, not auto-triggered without /compose in test prompts; scan-time kill-switch removes scope=compose uniformly; no name-prefix checks remain (covers: S3)
 - [ ] T2: add /compose command template rendering docs_dir at expansion; delete prompt.ts injection — acceptance: /compose from build agent reproduces compose-mode behavior on a golden task (covers: S3) (depends: T1)
 - [ ] T3: remove compose agent, permission special-cases, compose scan scope — acceptance: no references to `compose:` scope remain; migration note in changelog (covers: S3) (depends: T2)
 - [ ] T4: /plan command + Read-only permission preset; stub plan_enter/plan_exit — acceptance: Read-only preset blocks writes deterministically; /plan produces plan-mode-equivalent behavior (covers: S3, S4) (depends: T2)
