@@ -106,6 +106,14 @@ describe("compose skill bundle contract", () => {
       expect(md()).toMatch(/git diff/)
     })
 
+    test("reviewer subagent is told the worktree path and base branch to diff against", () => {
+      // Fresh subagents start at the repo root; without an explicit worktree
+      // pointer + base branch, `git diff` in the reviewer produces the wrong
+      // (or empty) delta.
+      expect(md()).toMatch(/worktree path/i)
+      expect(md()).toMatch(/base branch/i)
+    })
+
     test("finish verifies tests before merge and never auto-discards", () => {
       expect(md()).toMatch(/Tests green first/i)
       expect(md()).toMatch(/never auto-approves/i)

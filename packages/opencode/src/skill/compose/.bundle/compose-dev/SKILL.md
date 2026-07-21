@@ -33,6 +33,8 @@ No completion claims without fresh evidence. Before saying done/fixed/passing: r
 
 Before merging (and after each task when dispatching subagents), run ONE fresh-eyes review — **performed by a subagent, never by yourself** (an author cannot review their own diff without confirmation bias). Give the reviewer the covered spec text + the `git diff` and nothing else — NOT the implementer's report. The report anchors reviewers toward confirming what was reported and away from silent omissions; if introduced at all, it comes AFTER the review, solely to explain flagged items, and it can downgrade a flag but never add a pass.
 
+If you're working in an isolated worktree, tell the reviewer the worktree path AND the base branch to diff against — a fresh subagent starts at the repo root and would otherwise produce the wrong diff (or none at all). Passing the pre-computed diff text inline is also fine; either way, do not let the reviewer guess.
+
 The review is one pass, but the reviewer must consider the diff from these angles — each is a separate lens on the same code, and each needs its own explicit conclusion (not folded into a single "looks good"):
 
 - **Spec compliance.** Check every acceptance criterion in the covered spec text against the diff. Any criterion unmet or unverifiable is critical and blocks progress. A "pass" without concrete evidence (test name, command output, or `file:line`) is a fail — prose is not evidence.
