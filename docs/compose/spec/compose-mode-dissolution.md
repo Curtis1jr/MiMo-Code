@@ -1,21 +1,19 @@
 ---
 feature: compose-mode-dissolution
 status: designed
+updated: 2026-07-21
 branch: compose-slim
-experimental: true
 ---
 
 # Compose Mode Dissolution — from Mode to Composable Skills
 
-> [!NOTE]
-> **Experimental.** This document records the current (already-landed) compose
-> consolidation and the proposed route toward dissolving modes entirely. Later
-> steps are directional — each gate requires validation before proceeding.
+> This is an experimental spec: step 0 has already landed on `compose-slim`
+> (`1975a8d5`, `7ff01213`, `f708b01e`); steps 1–5 are directional — each gate
+> requires validation before proceeding.
 
 ## Report
 
-(Empty — this feature is at design stage. Steps 0 is delivered and reported in
-git history: `1975a8d5`, `7ff01213`.)
+(Empty at design time — this feature is still in design. Filled at delivery.)
 
 ## [S1] Problem
 
@@ -53,21 +51,25 @@ The consolidation this document builds on — already merged on this branch:
   - `compose:grill` (37 lines) — requirements interrogation: one question at a
     time, recommended answers, facts-from-environment, decomposition-first,
     autonomous mode, improvised visual aids (no bundled server).
-  - `compose:docs` (85 lines) — one feature document per feature, head-first
-    layout (frontmatter → Report → design `[Sn]` sections → Tasks), spec mode
-    and report mode, amendment-in-place, bidirectional coverage self-review.
+  - `compose:docs` (86 lines) — one feature document per feature at
+    `<docs_dir>/spec/<feature>.md`, head-first layout (frontmatter → Report →
+    design `[Sn]` sections → Tasks), written at two moments (design, then
+    Report filled in place at delivery — no separate report file),
+    amendment-in-place, bidirectional coverage self-review.
   - `compose:dev` (65 lines) — implementation contract: worktree isolation
     (detect-first, `.worktrees/`, ignore-check, preference memory), decision-rule
     test-first, root-cause debugging, evidence-gated verification, two-gate
     review (spec compliance compose-specific; code quality via fresh-eyes
     reviewer), subagent dispatch (model tiers, reviewer ≥ implementer,
     anti-anchoring), ordered finish (merge/PR/keep/discard, cleanup provenance).
-- **compose.txt** (~65 lines): re-entrant 6-step flow table
-  (grill → docs.spec → dev.impl → dev.review → docs.report → dev.finish),
-  decision rules instead of mandatory-invocation wording, environment
-  conventions, `<compose_docs_dir>` block at tail.
+- **compose.txt** (~43 lines): 6-step re-entrant sequence folded into the
+  skill list itself (each skill's responsibility implies its slot in the
+  cycle — Align/Spec via grill+docs, Implement/Review via dev, Report via
+  docs, Finish via dev); decision rules instead of mandatory-invocation
+  wording; environment conventions; `<compose_docs_dir>` block at tail as
+  its own "Output Directory" section.
 - **compose.js workflow** (749 lines) unchanged in structure; prompts reference
-  the new skill names and single feature-document path.
+  the new skill names and the `spec/<feature>.md` feature-document path.
 
 ## [S3] Target Architecture
 
@@ -176,7 +178,7 @@ text and no workflow opinion. Workflow opinions live in commands (/compose,
 
 | Step | Change | Gate before next |
 |---|---|---|
-| 0 | Consolidate 14 skills → 3; slim compose.txt (**done**, `1975a8d5`) | Dogfood on real tasks; no regression vs old flow |
+| 0 | Consolidate 14 skills → 3; slim compose.txt; move feature docs under `spec/` (**done**, `1975a8d5`, `7ff01213`, `f708b01e`) | Dogfood on real tasks; no regression vs old flow |
 | 1 | Skills → builtin as `compose-*` with activation-clause descriptions + config kill-switch; update compose.js, search exclusion, i18n keys, tests | compose-* not spuriously invoked in normal build sessions (observe across N sessions) |
 | 2 | `/compose` command template; delete prompt.ts injection; compose agent kept as thin alias for back-compat | /compose-from-build equals compose-mode behavior on the same tasks |
 | 3 | Remove compose agent + `compose:*` permission special-cases + compose extraction path | No user-facing workflow loss; config migration note |
@@ -192,8 +194,9 @@ no return for the mode; 4–5 generalize the pattern.
 - Sub-agent orchestration changes (actor/task machinery untouched).
 - Removing the `skill` tool or changing skill loading for non-compose skills.
 - Team/marketplace distribution of compose-* skills.
-- Migrating existing `docs/compose/specs|plans|reports` trees (old artifacts
-  keep working; new work uses single feature documents).
+- Migrating existing `docs/compose/plans|reports` trees (old artifacts
+  keep working; new work uses single feature documents under
+  `docs/compose/spec/<feature>.md`).
 
 ## Tasks
 
