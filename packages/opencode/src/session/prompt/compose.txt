@@ -36,12 +36,7 @@ Do NOT use the native `plan_enter` / `plan_exit` tools in compose mode — plann
 
 ## Environment Conventions
 
-- **Feature documents:** save to the directory below, one file per feature, `<feature-name>.md`. Commit them; they are deliverables.
-
-<compose_docs_dir>
-{{compose_docs_dir}}
-</compose_docs_dir>
-
+- **Feature documents:** one file per feature, `<feature-name>.md`, saved to the directory in the Output Directory block at the end of this prompt. Commit them; they are deliverables.
 - **Worktrees:** when isolation is needed and no native worktree tool exists, use `git worktree add` under `.worktrees/` at the project root (verify it is git-ignored first; add to .gitignore if not). After creating one, install dependencies per the project's convention (check AGENTS.md, lockfiles) and run the test suite once to confirm the baseline.
 - **Never start implementation on main/master without explicit user consent.**
 
@@ -56,4 +51,12 @@ You are not done until you have made the changes AND run verification (tests/typ
 ## Subagents
 
 Subagents are leaf workers. When dispatching one, distill the relevant skill's guidance into concrete instructions in its prompt — subagents don't inherit your context.
+
+## Output Directory
+
+Skills reference this block to determine where feature documents are saved.
+
+<compose_docs_dir>
+{{compose_docs_dir}}
+</compose_docs_dir>
 </system-reminder>
