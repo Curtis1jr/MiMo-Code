@@ -93,9 +93,12 @@ describe("compose skill bundle contract", () => {
       expect(md()).toMatch(/fresh evidence/i)
     })
 
-    test("review is two-gate: spec compliance before code quality", () => {
+    test("review is one pass with explicit multi-angle lenses (spec compliance + beyond-spec correctness + codebase consistency)", () => {
       expect(md()).toMatch(/spec compliance/i)
-      expect(md()).toMatch(/code quality/i)
+      expect(md()).toMatch(/beyond the spec/i)
+      expect(md()).toMatch(/consistency with the codebase/i)
+      // Per-angle conclusion, not a blanket verdict — anti-rubber-stamp guard.
+      expect(md()).toMatch(/conclusion per angle/i)
     })
 
     test("reviewers get the diff, not the implementer's report", () => {

@@ -31,10 +31,17 @@ No completion claims without fresh evidence. Before saying done/fixed/passing: r
 
 ## Review Gate
 
-Before merging (and after each task when dispatching subagents), two gates in order:
+Before merging (and after each task when dispatching subagents), run ONE fresh-eyes review — **performed by a subagent, never by yourself** (an author cannot review their own diff without confirmation bias). Give the reviewer the covered spec text + the `git diff` and nothing else — NOT the implementer's report. The report anchors reviewers toward confirming what was reported and away from silent omissions; if introduced at all, it comes AFTER the review, solely to explain flagged items, and it can downgrade a flag but never add a pass.
 
-1. **Spec compliance (compose-specific).** Check the feature document's acceptance criteria against the `git diff` — every criterion needs evidence; anything unmet or unverifiable is critical and blocks progress. A "pass" without verifiable evidence (test name, command output, or `file:line`) is a fail — prose is not evidence. Give the reviewer the covered spec text + diff only, NOT the implementer's report — the report's claims anchor the reviewer toward confirming what was reported and away from silent omissions. (The report may be introduced afterwards, solely to explain flagged items — it can downgrade a flag, never add a pass.)
-2. **Code quality.** Use the platform's built-in review discipline: dispatch a fresh-eyes reviewer subagent given the diff (never your reasoning), focused on real bugs — logic, boundaries, error handling, tests that actually test — not style.
+The review is one pass, but the reviewer must consider the diff from these angles — each is a separate lens on the same code, and each needs its own explicit conclusion (not folded into a single "looks good"):
+
+- **Spec compliance.** Check every acceptance criterion in the covered spec text against the diff. Any criterion unmet or unverifiable is critical and blocks progress. A "pass" without concrete evidence (test name, command output, or `file:line`) is a fail — prose is not evidence.
+- **Code correctness beyond the spec.** Read the diff as a stranger seeing it for the first time — logic, boundaries, error handling, tests that actually test. **The spec is the compliance yardstick, not the boundary of the review** — bugs outside the spec's stated surface (regressions, unrelated changes, drive-by cleanup that broke something) are still findings.
+- **Consistency with the codebase.** Naming, module conventions, error-handling style — does this change fit the surrounding code, or does it introduce a foreign pattern?
+
+Instruct the reviewer to state a conclusion per angle, not one blanket verdict; a single unqualified "approved" is a red flag that one or more lenses were skipped.
+
+The reviewer's tier must be at least the implementer's — a weaker reviewer shares the implementer's blind spots and rubber-stamps them.
 
 Fix critical findings before proceeding; push back on wrong findings with technical reasoning, never performative agreement.
 
