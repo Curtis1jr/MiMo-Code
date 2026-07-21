@@ -101,9 +101,21 @@ describe("compose skill bundle contract", () => {
       expect(md()).toMatch(/conclusion per angle/i)
     })
 
-    test("reviewers get the diff, not the implementer's report", () => {
-      expect(md()).toMatch(/NOT the implementer's report/i)
+    test("reviewer input bundle: spec + diff + verification evidence, not the implementer's prose report", () => {
+      // Evidence bundle (test names, command outputs, file:line refs) is
+      // primary/implementer's output, handed to the reviewer as input —
+      // not something the reviewer regenerates.
+      expect(md()).toMatch(/evidence bundle/i)
       expect(md()).toMatch(/git diff/)
+      expect(md()).toMatch(/NOT the implementer'?s (prose )?report/i)
+    })
+
+    test("reviewer AUDITS evidence, does not PRODUCE evidence (no auto-rerun of tests)", () => {
+      // The failure mode this guards against: a reviewer subagent that
+      // 'verifies for itself' by rerunning e2e / booting the app, doubling
+      // resource usage against a primary already running verification.
+      expect(md()).toMatch(/audits evidence.*does not produce evidence/i)
+      expect(md()).toMatch(/never runs the test suite|does not run the test/i)
     })
 
     test("reviewer subagent is told the worktree path and base branch to diff against", () => {
