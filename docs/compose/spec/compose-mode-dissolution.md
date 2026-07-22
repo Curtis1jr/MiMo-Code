@@ -1,252 +1,242 @@
 ---
 feature: compose-mode-dissolution
-status: designed
-updated: 2026-07-21
+status: experimental
+updated: 2026-07-22
 branch: compose-slim
+successor: compose-next migration PR (not opened yet)
 ---
 
-# Compose Mode Dissolution — from Mode to Composable Skills
+# Compose Slim Experiment and Compose Next Roadmap
 
-> This is an experimental spec: step 0 has already landed on `compose-slim`
-> (`1975a8d5`, `7ff01213`, `f708b01e`); steps 1–5 are directional — each gate
-> requires validation before proceeding.
+> **Draft experiment, not a merge candidate.** The slim three-skill approach on
+> this branch performs reasonably well with Fable/Sol-class models and validates
+> the core hypothesis: strong models need compact execution contracts, not a
+> large process curriculum. It is staying open as a Draft so the experiment is
+> not mistaken for abandoned work. For compatibility, the production feature
+> will ship through a new branch and PR as builtin `/compose-next` alongside the
+> deprecated Legacy Compose mode. Once that successor PR exists, close this PR
+> as superseded by the compatibility roadmap rather than merging it.
 
 ## Report
 
-(Empty at design time — this feature is still in design. Filled at delivery.)
+**Experiment outcome** - Promising. Consolidating the old Compose curriculum
+into compact contracts preserved the useful behavior in dogfooding while
+substantially reducing prompt weight. The experiment also exposed contracts
+that strong models still need stated explicitly: question-tool shapes,
+Never-Ask continuation, feature-document invariants, worktree ownership,
+verification-before-review ordering, exact review coordinates, and avoidance of
+duplicate heavy verification.
+
+**Production decision** - Do not replace Legacy Compose in place. Introduce one
+self-contained builtin skill named `compose-next`, make it explicitly selectable
+from Build through `/compose-next`, and keep it out of normal model discovery.
+Deprecate Legacy Compose with a recommendation for Fable/Sol-class models to use
+Build + `/compose-next`. Remove Legacy Compose only after comparable model
+capability is broadly available and the migration has been observed in release.
 
 ## [S1] Problem
 
-A "mode" in MiMoCode bundles three orthogonal concerns into one switch:
+A Compose mode currently bundles three independent concerns:
 
-1. **Permission policy** — what the agent may do (compose:* skill allow/deny,
-   plan mode's read-only edit denial)
-2. **Workflow knowledge** — how to work (compose.txt's flow table, plan mode's
-   "research then propose" framing)
-3. **UI state** — what the Tab key cycles and the status bar shows
+1. **Permission policy** - what the agent may do.
+2. **Workflow knowledge** - how the agent should plan, implement, verify, review,
+   and finish work.
+3. **UI state** - what the Tab key selects and what the status bar displays.
 
-This bundling made sense when models needed heavy process scaffolding; frontier
-models have internalized planning/TDD/debugging, so the knowledge layer has
-shrunk (14 skills → 3, ~5700 lines removed) and the remaining bundle causes
-concrete problems:
+That coupling was useful when models needed heavy workflow scaffolding. Stronger
+models now internalize most planning, TDD, and debugging practice, but removing
+the mode immediately would create compatibility problems:
 
-- compose.txt is injected as a synthetic message part on the compose agent's
-  user messages (`prompt.ts:670-687`) — invisible to users, fragile ordering,
-  duplicated docs-dir plumbing (`{{compose_docs_dir}}` runtime replacement in
-  prompt.ts + `_composeDocsDir` arg injection for the workflow).
-- The `compose:` prefix is a parallel visibility namespace: excluded from
-  skill_search (`search.ts:65`), excluded from localized aliases
-  (`localized-alias.ts:8`), permission-gated per agent (`agent.ts:108-111,219`)
-  — machinery that exists only to keep three files hidden from two agents.
-- Users cannot use compose discipline from build mode, or grill from plan mode;
-  the skills are locked to a mode instead of being tools.
-- plan mode duplicates the same pattern for an even thinner payload: models
-  know how to plan; the mode's real value is its read-only permission set.
+- Existing users and weaker models still depend on Legacy Compose behavior.
+- Reusing the name `compose` for a new skill while the Compose agent remains
+  available would be ambiguous in product language, code, logs, and support.
+- Replacing fourteen skills with three internal skills is an implementation
+  experiment, not yet a user-facing migration design.
+- Model capability is moving quickly; the product needs a reversible overlap
+  period rather than a flag day.
 
-## [S2] Current State (delivered, step 0)
+## [S2] Experimental Findings
 
-The consolidation this document builds on — already merged on this branch:
+This branch implements and dogfoods an intentionally aggressive simplification:
 
-- **Three compose-scoped skills** in `packages/opencode/src/skill/compose/.bundle/`:
-  - `compose:grill` (37 lines) — requirements interrogation: one question at a
-    time, recommended answers, facts-from-environment, decomposition-first,
-    autonomous mode, improvised visual aids (no bundled server).
-  - `compose:docs` (86 lines) — one feature document per feature at
-    `<docs_dir>/spec/<feature>.md`, head-first layout (frontmatter → Report →
-    design `[Sn]` sections → Tasks), written at two moments (design, then
-    Report filled in place at delivery — no separate report file),
-    amendment-in-place, bidirectional coverage self-review.
-  - `compose:dev` — implementation contract: workspace isolation, decision-rule
-    test-first, root-cause debugging, evidence-gated verification, one
-    fresh-eyes review with explicit conclusions for spec compliance,
-    correctness, and codebase consistency, then report-before-finish branch
-    handling with provenance-safe cleanup.
-- **compose.txt**: routes work through the three skills, requires loading the
-  applicable contract before use, defines headless decision behavior, and
-  carries only cross-skill execution rules plus the `<compose_docs_dir>` block.
-  Detailed workspace, testing, review, and finish rules live in `compose-dev`
-  instead of being duplicated in the top-level prompt.
-- **compose.js workflow** (749 lines) unchanged in structure; prompts reference
-  the new skill names and the `spec/<feature>.md` feature-document path.
+- Fourteen Compose skills were consolidated into `compose-grill`,
+  `compose-spec`, and `compose-dev`.
+- Feature design, tasks, and delivery report share one document at
+  `<compose_docs_dir>/spec/<feature>.md`.
+- `compose.txt` became a compact router while detailed executable contracts
+  moved into the skills.
+- Skill discovery gained structured `scope` metadata and
+  `Permission.evaluateSkill`, proving that `all()` and agent-specific
+  `available()` can serve different consumers without name-prefix heuristics.
+- The existing `compose.js` workflow remained structurally unchanged.
 
-### Delivered on top of step 0: rename + scope mechanism (step 1a)
+The experiment is useful even though its exact architecture will not ship:
 
-Landed on `compose-slim` as `23a13568` (33 files, +321/−119):
+- Prompt reduction works well enough with Fable/Sol-class models to justify a
+  production path.
+- A single load is preferable to asking the model to coordinate three internal
+  skills in the final user-facing design.
+- Compact text must retain concrete tool protocols and ordering constraints;
+  deleting rationale must not delete the executable contract.
+- Verification and review must be sequential. A reviewer may gather additional
+  evidence, but should reuse a compact PASS/FAIL/PRE-EXISTING summary instead of
+  repeating an already-passing heavy E2E command without cause.
+- Never-Ask applies to one decision only; later decisions still go through the
+  question tool.
 
-- **Names.** `compose:{grill,docs,dev}` → `compose-{grill,spec,dev}`. Colon out,
-  hyphen in — readable in listings, safe in slash-mention contexts. `docs` →
-  `spec` because the skill produces exactly one `spec/<feature>.md` per
-  feature; the name now matches its directory.
-- **Bundle dirs.** `.bundle/{grill,docs,dev}/` → `.bundle/compose-{grill,spec,dev}/`.
-  Skill name = directory name (1:1), so `loadComposeBundle()` no longer
-  synthesizes `compose:${dir}`; the prefix is baked into the directory.
-- **`Skill.Info.scope`.** New optional field on the discovery record,
-  populated at scan time (`scope: "compose" | "builtin" | "project" |
-  "global"`). Wired through a `ScanMeta` struct so future per-scope metadata
-  attaches at the same seam without changing signatures.
-- **`Permission.evaluateSkill({name, scope}, ...rulesets)`.** New public API in
-  `permission/evaluate.ts`. Two-tier matching: an explicit name rule wins
-  (`compose-grill`), a `scope:<scope>` rule is the fallback (`scope:compose`).
-  This is the ONLY entry point callers should use to gate a skill by permission
-  — do not reinvent the two-tier logic locally. Wired into `Skill.available`
-  in one line.
-- **No more name-prefix mechanism keys.** `search.ts` and `localized-alias.ts`
-  now filter on `scope === "compose"`; TUI (`autocomplete.tsx`,
-  `dialog-skill.tsx`) does the same. Agent config for build/plan uses
-  `"scope:compose": "deny"`; compose agent uses `"scope:compose": "allow"`.
-  A user's project skill that happens to start with `compose-` is no longer
-  swept up.
-- **Tests.** New `test/skill/available-permission.test.ts` covers the
-  end-to-end gate (build sees 0 compose-scoped skills; compose sees all three;
-  `compose-foo` user skill in `.opencode/skills/` is not filtered on build).
-  New `test/skill/localized-alias.test.ts` covers the scope-vs-name filter.
-  Existing tests migrated to name/scope semantics; 187/187 pass across
-  `test/skill`, `test/agent`, `test/workflow/compose`, `test/session/prompt-skill-mention`.
-- **SDK types regenerated** to expose `Skill.scope`.
+## [S3] Production Target: Compose Next
 
-Explicitly NOT in this PR — scheduled as a separate task (see T1b in
-`## Tasks`): moving the bundle to `skill/builtin/.bundle/`, adding the
-activation clause, and exposing `compose.skills` config is a **user-visible
-breaking change**. It changes how users invoke compose (via `/compose`
-activation instead of switching to the compose agent) and may need a
-deprecation window and migration hint for anyone still relying on the
-compose agent. Ship 1a first, dogfood it, then design the migration
-surface for 1b separately.
+### One self-contained builtin skill
 
-## [S3] Target Architecture
+Create one skill in the builtin bundle:
 
-### Skills become builtin, hyphen-named, scope-tracked, soft-gated
-
-Move `compose-grill`, `compose-spec`, `compose-dev` from
-`skill/compose/.bundle/` to `skill/builtin/.bundle/`, **retaining `scope:
-"compose"` metadata** on the scanned entries. Future splits (e.g.
-`compose-review`) are additive directory drops — free composition, no
-mechanism changes.
-
-- **Scope is the mechanism key; the name is pure UX.** All special-casing
-  (search exclusion, kill switch, any future filtering) keys on the structured
-  `scope` field, never on name prefixes. The `name.startsWith("compose:")`
-  string checks that used to live in `search.ts` and `localized-alias.ts` have
-  been replaced by scope checks; permission gating goes through
-  `Permission.evaluateSkill`. Renaming a skill never touches filter logic.
-- **Naming:** `compose-` prefix, no colon — readable, groups in listings,
-  parses cleanly in slash-mention contexts. Carries no mechanical meaning.
-- **Soft gate (probabilistic):** each description begins with an activation
-  clause — "Only after the user has activated /compose (or explicitly asks for
-  compose discipline). Not for routine work." Models respect described trigger
-  conditions well; this is the everyday gate.
-- **Hard gate (deterministic), two layers — neither uses permission deny.**
-  Permission-based deny is evaluated per-agent, which makes the available-skills
-  list differ between agents in one session (unstable prompt prefix, cache
-  misses, and /compose could reference skills absent from the current list).
-  Instead:
-  1. **Scan-time exclusion** — config flag (`compose.skills: false` /
-     `MIMOCODE_DISABLE_COMPOSE_SKILLS`) drops scope=compose entries at
-     discovery. List is stable for the whole session (uniformly absent);
-     zero token cost for users who never want them.
-  2. **Invoke-time refusal (optional hardening)** — the `skill` tool rejects
-     scope=compose invocations until /compose has run in the session,
-     returning "compose skills require /compose activation first". The list
-     stays uniformly present and cache-stable; the refusal message itself
-     steers the model. This upgrades the soft gate to deterministic without
-     touching list composition — adopt only if description-gating proves
-     insufficient in step-1 observation.
-- **skill_search exclusion** keyed on scope=compose so they never auto-load
-  via search; reachable only by name or via /compose.
-
-### /compose becomes a slash command
-
-A command template (like `/review` in `command/template/review.txt`) containing
-today's compose.txt content: the three-skill map, the 6-step flow table,
-decision rules, asking policy, environment conventions, and the docs directory
-(resolved at template render time — the `{{compose_docs_dir}}` message-injection
-plumbing in prompt.ts is deleted).
-
-- Available from any agent, at any time. Activation is explicit and visible in
-  the transcript — no hidden synthetic message parts.
-- After /compose runs, the activation clause in the skill descriptions is
-  satisfied; the model may invoke compose-* skills for the rest of the session.
-- `/compose <task>` passes the task straight into step 1 (grill).
-
-### The compose agent/mode is removed
-
-Once skills are builtin and /compose exists, the compose agent's remaining
-content is: a permission override (obsolete — skills are globally visible,
-gated by description + flag) and the prompt injection (obsolete — moved to the
-command). Delete the agent registration (`agent.ts:210-219`), the injection
-block (`prompt.ts:670-687`), the `compose:*` permission special-cases, and the
-`scope: "compose"` extraction path (`skill/index.ts:197-205`).
-
-The **compose workflow** (`compose.js`) is unaffected: it references skills by
-name and runs headless; renamed references (`compose:dev` → `compose-dev`) are
-the only change. It remains the deterministic orchestration layer — retry
-bounds, phase gates, worktree fan-out — which prompt text cannot guarantee.
-
-### plan mode follows the same dissolution
-
-`plan_enter`/`plan_exit` tools and the plan agent are replaced by:
-
-- **/plan command**: a short template — "research first, propose before
-  editing, present the plan for approval" — nothing more; models know how to
-  plan.
-- **Read-only permission preset** (see [S4]) providing the actual guarantee
-  that planning doesn't mutate the workspace.
-
-## [S4] Permission Presets Replace Modes
-
-The Tab cycle stops switching agents and instead switches **permission
-presets** — deterministic, harness-enforced, model-independent:
-
-| Preset | Meaning |
-|---|---|
-| Default | ask on risky operations (current build defaults) |
-| Accept edits | file edits pre-approved; shell/network still gated |
-| Read-only | no writes, no mutating commands (subsumes plan mode's guarantee) |
-| Full access | everything pre-approved (current yolo-ish flows) |
-
-This matches the direction visible in Claude Code's permission selector
-(默认权限 / 接受编辑权限 / 完全访问权限). Presets are pure permission-config
-layers over the existing `Permission.evaluate` machinery; they carry no prompt
-text and no workflow opinion. Workflow opinions live in commands (/compose,
-/plan) and skills — freely combinable with any preset:
-
+```text
+packages/opencode/src/skill/builtin/.bundle/compose-next/SKILL.md
 ```
-/compose + Accept-edits  = today's compose mode, but explicit
-/plan    + Read-only     = today's plan mode, but deterministic
-(nothing) + Default      = today's build mode
+
+Its canonical name is `compose-next` and its natural scan scope is `builtin`.
+It is not compose-scoped: it is a normal builtin capability invoked explicitly
+from Build, not an internal module owned by a Compose mode.
+
+The skill contains the complete compact workflow in one load:
+
+1. inspect repository facts and resolve only genuine user decisions;
+2. create or amend a feature document when the work warrants one;
+3. implement in dependency order with test-first rules where applicable;
+4. run verification and summarize the observed results compactly;
+5. dispatch one fresh reviewer with spec, worktree, base/head SHAs, diff
+   coordinates, and the compact verification summary;
+6. finalize the feature document before branch completion;
+7. finish with explicit merge/PR/keep/discard and worktree ownership rules.
+
+The current three slim skills are source material for this document, not the
+production bundle layout.
+
+### User-visible, model-undiscovered
+
+Use the existing distinction between the complete skill registry and the
+agent-visible subset:
+
+- `Skill.all()` contains `compose-next`. Command registration and the app skills
+  endpoint already use `all()`, so `/compose-next` is available for user slash
+  selection and explicit typing.
+- Add an exact `compose-next: deny` skill permission to the default agent rules.
+  `Skill.available(agent)` therefore omits it from `available_skills` and the
+  skill tool description.
+- Change `skill_search` to search `Skill.available(currentAgent)` rather than
+  `Skill.all()`. It must not discover or auto-load skills unavailable to the
+  current agent.
+- Keep `SkillTool.execute()` backed by `get()`. If a model guesses the exact
+  name, invocation is allowed; this is behavior guidance, not a security
+  boundary.
+- Do not add activation state, invoke-time refusal, model allowlists, or a new
+  visibility schema.
+
+Because `compose-next` is builtin-scoped, the current Build-only TUI suppression
+for `scope === "compose"` does not hide it. It should appear in slash
+autocomplete while remaining absent from model discovery.
+
+### Legacy Compose compatibility
+
+Keep the existing Compose agent, prompt injection, private skills, and workflow
+behavior during the overlap period. Mark the agent deprecated in its TUI
+description and opening prompt:
+
+> Legacy Compose is deprecated but remains available for compatibility. With a
+> Fable/Sol-class model, switch to Build and run `/compose-next`.
+
+This is a recommendation, not runtime model detection. Do not maintain a hard
+list of supported model IDs; users may choose either path.
+
+Terminology during migration:
+
+- **Legacy Compose** - the existing Compose agent/mode.
+- **Compose Next** - the builtin skill invoked as Build + `/compose-next`.
+
+After Legacy Compose is removed, add `/compose` as an alias for the same skill.
+Keep `/compose-next` as a compatibility alias for existing documentation and
+user habits; no forced second migration is required.
+
+## [S4] Release Migration
+
+### Phase A - Successor implementation
+
+Create a fresh production branch from the latest `main`. Do not continue
+implementation on `compose-slim` and do not merge this experimental commit
+history wholesale. Reuse the proven contract text and, where necessary,
+re-implement or selectively carry only the minimal discovery mechanism.
+
+The successor PR adds:
+
+- builtin `compose-next`;
+- exact-name exclusion from `available()` through agent skill permission;
+- agent-aware `skill_search` input;
+- Build slash autocomplete and explicit invocation coverage;
+- Legacy Compose deprecation messaging;
+- compatibility and model-behavior tests.
+
+When the successor PR opens, update this Draft with its URL and close this PR as
+superseded. The closure means the experiment graduated into a compatible
+product route, not that Compose Slim failed or was abandoned.
+
+### Phase B - Dual-path release
+
+Ship both paths:
+
+```text
+Legacy Compose agent       compatibility path
+Build + /compose-next      recommended strong-model path
 ```
+
+Observe at least:
+
+- task completion and user intervention rate;
+- skipped spec/report/review steps;
+- duplicate heavy verification and resource contention;
+- context/token cost;
+- fallback usage of Legacy Compose;
+- behavior across MiMo and third-party models near the Fable/Sol capability
+  level.
+
+### Phase C - Remove Legacy Compose
+
+Proceed only after Fable/Sol-class capability is broadly available across the
+models MiMoCode intends to support and Compose Next has shown no material
+workflow regression.
+
+Then:
+
+1. remove Legacy Compose from the default Tab cycle;
+2. retain a migration message for one release;
+3. remove the Legacy Compose agent, prompt injection, and private bundle;
+4. add `/compose` as an alias of `compose-next`;
+5. evaluate plan-mode and permission-preset changes separately.
 
 ## [S5] Route
 
-| Step | Change | Gate before next |
-|---|---|---|
-| 0 | Consolidate 14 skills → 3; slim compose.txt; move feature docs under `spec/` (**done**, `1975a8d5`, `7ff01213`, `f708b01e`) | Dogfood on real tasks; no regression vs old flow |
-| 1a | Rename compose:{grill,docs,dev} → compose-{grill,spec,dev}; add `Skill.Info.scope`; introduce `Permission.evaluateSkill` and gate on scope not name-prefix (**done**, `23a13568`) | 187/187 relevant tests green; no name-prefix mechanism keys remain in code |
-| 1b | **[separate PR — breaking]** Move skills to `skill/builtin/.bundle/` (still under `scope: "compose"`); add activation clause to descriptions; surface `compose.skills` config; design deprecation + migration path for users still on the compose-agent invocation | compose-* not spuriously invoked in normal build sessions; deprecation hint documented |
-| 2 | `/compose` command template; delete prompt.ts injection; compose agent kept as thin alias for back-compat | /compose-from-build equals compose-mode behavior on the same tasks |
-| 3 | Remove compose agent + compose-scope permission special-cases + compose extraction path | No user-facing workflow loss; config migration note |
-| 4 | `/plan` command + Read-only preset; deprecate plan_enter/plan_exit (tool stubs warn) | Plan-mode parity: read-only actually enforced by preset |
-| 5 | Tab cycles permission presets; agent concept internal-only | UI/UX validation |
-
-Steps 1–2 are independently shippable and reversible. Step 3 is the point of
-no return for the mode; 4–5 generalize the pattern.
+| Step | Branch / PR | Change | Exit gate |
+|---|---|---|---|
+| E0 | `compose-slim`, draft PR #1850 | Three-skill strong-model experiment and executable-contract refinement | Findings documented; keep Draft, do not merge |
+| P1 | New branch from latest `main` | Add builtin `/compose-next`; keep Legacy Compose deprecated but functional | User slash works in Build; model manifest/search omit it; legacy path unchanged |
+| P2 | Same successor PR or a small follow-up | Dogfood and release both paths | Fable/Sol-class runs show acceptable completion, review, verification, and token behavior |
+| P3 | Later removal PR | Remove Legacy Compose; add `/compose` alias | Supported model population meets capability gate; migration release completed |
+| P4 | Separate roadmap | Revisit `/plan` and permission presets | Independent design and validation |
 
 ## [S6] Out of Scope
 
-- Rewriting the compose.js workflow's phase structure (it stays as-is).
-- Sub-agent orchestration changes (actor/task machinery untouched).
-- Removing the `skill` tool or changing skill loading for non-compose skills.
-- Team/marketplace distribution of compose-* skills.
-- Migrating existing `docs/compose/plans|reports` trees (old artifacts
-  keep working; new work uses single feature documents under
-  `docs/compose/spec/<feature>.md`).
+- Merging the `compose-slim` experimental implementation into production.
+- Rewriting the existing `compose.js` workflow in this experiment or the first
+  Compose Next compatibility PR.
+- Hard model-ID gating for `/compose-next`.
+- Treating model-undiscoverability as a security boundary.
+- Removing Legacy Compose in the first Compose Next release.
+- Migrating old Compose documents; existing artifacts remain valid.
+- Plan-mode dissolution and Tab permission presets; those need separate specs.
 
 ## Tasks
 
-- [x] T0: consolidate skills to grill/docs/dev, slim compose.txt — acceptance: tests green, typecheck clean (covers: S2)
-- [x] T1a: rename compose:{grill,docs,dev} → compose-{grill,spec,dev}; wire `Skill.Info.scope`; gate permission via `Permission.evaluateSkill` instead of `name.startsWith("compose:")` — acceptance: no name-prefix mechanism keys remain in `search.ts` / `localized-alias.ts` / `TUI` / agent config; user skill `compose-foo` (scope=project) is not filtered on build agent (covers: S3)
-- [ ] T1b: (SEPARATE PR — user-visible breaking change) move bundle from `skill/compose/.bundle/` to `skill/builtin/.bundle/`; add activation clause to each skill description; expose `compose.skills` config surface; design deprecation + migration hint for anyone still relying on the old compose-agent-only invocation path — acceptance: skills visible in build agent, not auto-triggered without /compose in test prompts; scan-time kill-switch removes scope=compose uniformly; deprecation surface documented in changelog (covers: S3) (depends: T1a)
-- [ ] T2: add /compose command template rendering docs_dir at expansion; delete prompt.ts injection — acceptance: /compose from build agent reproduces compose-mode behavior on a golden task (covers: S3) (depends: T1b)
-- [ ] T3: remove compose agent, compose-scope permission special-cases, compose scan scope — acceptance: no references to compose scope remain outside builtin; migration note in changelog (covers: S3) (depends: T2)
-- [ ] T4: /plan command + Read-only permission preset; stub plan_enter/plan_exit — acceptance: Read-only preset blocks writes deterministically; /plan produces plan-mode-equivalent behavior (covers: S3, S4) (depends: T2)
-- [ ] T5: Tab cycles permission presets — acceptance: UI switch changes only permissions, session agent unchanged (covers: S4) (depends: T3, T4)
+- [x] E0: consolidate fourteen skills into three and reduce prompt weight - acceptance: relevant tests and typecheck pass; dogfooding remains usable (covers: S2)
+- [x] E1: refine the slim skills into executable contracts - acceptance: question, Never-Ask, document, verification, review, and finish invariants have explicit tests (covers: S2)
+- [x] E2: choose a compatibility-first production direction - acceptance: roadmap keeps Legacy Compose while introducing builtin `/compose-next` from Build (covers: S3, S4)
+- [ ] P1: open a fresh implementation branch and successor PR from latest `main` - acceptance: PR implements the Phase A list without depending on merging this experiment (covers: S3, S4)
+- [ ] P2: close draft PR #1850 as superseded after linking the successor - acceptance: closure text records successful experimentation and the compatibility reason for the new implementation path (covers: S4)
