@@ -2124,7 +2124,7 @@ test("closest checks multiple query terms in order", async () => {
   })
 })
 
-test("model limit defaults to DEFAULT_CONTEXT_WINDOW (1M) when not specified (F41)", async () => {
+test("model limit defaults to DEFAULT_CONTEXT_WINDOW (200K) when not specified (F41)", async () => {
   await using tmp = await tmpdir({
     init: async (dir) => {
       await Bun.write(
@@ -2155,7 +2155,7 @@ test("model limit defaults to DEFAULT_CONTEXT_WINDOW (1M) when not specified (F4
     fn: async () => {
       const providers = await list()
       const model = providers[ProviderID.make("no-limit")].models["model"]
-      expect(model.limit.context).toBe(1_000_000)
+      expect(model.limit.context).toBe(200_000)
       expect(model.limit.output).toBe(0)
     },
   })
