@@ -42,4 +42,20 @@ describe("BuiltinWorkflow registry", () => {
     expect(m!.phases?.length).toBe(2)
     expect(m!.phases?.[0].title).toBe("Fanout")
   })
+
+  test("lists moa-implement with parsed meta and phases", () => {
+    const list = BuiltinWorkflow.list()
+    const m = list.find((w) => w.name === "moa-implement")
+    expect(m).toBeDefined()
+    expect(m!.description).toContain("Mixture-of-Agents")
+    expect(m!.phases?.length).toBe(2)
+    expect(m!.phases?.[0].title).toBe("Fanout")
+    expect(m!.phases?.[1].title).toBe("Aggregate")
+  })
+
+  test("get('moa-implement') returns the script body starting with export const meta", () => {
+    const m = BuiltinWorkflow.get("moa-implement")
+    expect(m).toBeDefined()
+    expect(m!.script.startsWith("export const meta")).toBe(true)
+  })
 })

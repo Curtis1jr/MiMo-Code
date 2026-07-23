@@ -19,6 +19,8 @@ import COMPOSE_SCRIPT from "./builtin/compose.js" with { type: "text" }
 import RESEARCH_EXPERIMENT_SCRIPT from "./builtin/research-experiment.js" with { type: "text" }
 // @ts-expect-error TS1192: import-attribute text loader, resolved by Bun not tsgo
 import MOA_REVIEW_SCRIPT from "./builtin/moa-review.js" with { type: "text" }
+// @ts-expect-error TS1192: import-attribute text loader, resolved by Bun not tsgo
+import MOA_IMPLEMENT_SCRIPT from "./builtin/moa-implement.js" with { type: "text" }
 import { parseMeta } from "./meta"
 
 export type Entry = {
@@ -40,6 +42,7 @@ const SCRIPTS: { file: string; script: string }[] = [
   { file: "compose.js", script: COMPOSE_SCRIPT },
   { file: "research-experiment.js", script: RESEARCH_EXPERIMENT_SCRIPT },
   { file: "moa-review.js", script: MOA_REVIEW_SCRIPT },
+  { file: "moa-implement.js", script: MOA_IMPLEMENT_SCRIPT },
 ]
 
 // Null-prototype so the registry is a self-evidently closed set: a lookup like
