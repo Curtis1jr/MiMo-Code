@@ -446,6 +446,38 @@ const InfoSchema = Schema.Struct({
           ).annotate({
             description: "Sidekick model used when the router decides to downgrade at a compaction boundary.",
           }),
+          moa_review: Schema.optional(
+            Schema.Struct({
+              enabled: Schema.optional(Schema.Boolean).annotate({
+                description: "Enable the moa-review builtin workflow. Off by default.",
+              }),
+              reviewers: Schema.optional(PositiveInt).annotate({
+                description: "Number of reviewer agents to fan out to (default 3).",
+              }),
+              focuses: Schema.optional(Schema.mutable(Schema.Array(Schema.String))).annotate({
+                description:
+                  "Reviewer focus labels, in priority order. Default: correctness, performance, security-and-style.",
+              }),
+              aggregator_model: Schema.optional(
+                Schema.Struct({
+                  providerID: Schema.String,
+                  modelID: Schema.String,
+                }),
+              ).annotate({
+                description:
+                  "Model used by the fusion-lead aggregator step. Falls back to the run's default lead model when omitted.",
+              }),
+              gate: Schema.optional(
+                Schema.Struct({
+                  minDiffLines: Schema.optional(PositiveInt).annotate({
+                    description: "Skip fanout for diffs smaller than this many lines (default 20).",
+                  }),
+                }),
+              ).annotate({ description: "Cost-control gate: skip fanout for small diffs." }),
+            }),
+          ).annotate({
+            description: "MoA-for-Review workflow settings (see workflow: moa-review).",
+          }),
         }),
       ).annotate({
         description:

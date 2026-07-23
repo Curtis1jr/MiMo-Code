@@ -33,4 +33,13 @@ describe("BuiltinWorkflow registry", () => {
     expect(c).toBeDefined()
     expect(c!.script.startsWith("export const meta")).toBe(true)
   })
+
+  test("lists moa-review with parsed meta and phases", () => {
+    const list = BuiltinWorkflow.list()
+    const m = list.find((w) => w.name === "moa-review")
+    expect(m).toBeDefined()
+    expect(m!.description).toContain("Mixture-of-Agents")
+    expect(m!.phases?.length).toBe(2)
+    expect(m!.phases?.[0].title).toBe("Fanout")
+  })
 })
