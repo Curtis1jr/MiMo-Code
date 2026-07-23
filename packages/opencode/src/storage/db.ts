@@ -39,8 +39,13 @@ export const Path = iife(() => {
     if (Flag.MIMOCODE_DB === ":memory:" || path.isAbsolute(Flag.MIMOCODE_DB)) return Flag.MIMOCODE_DB
     return path.join(Global.Path.data, Flag.MIMOCODE_DB)
   }
+  // Ephemeral runs use an in-memory DB: nothing persists and startup skips the
+  // on-disk file open + WAL checkpoint. An explicit MIMOCODE_DB above wins.
+  if (Flag.MIMOCODE_EPHEMERAL) return ":memory:"
   return getChannelPath()
 })
+
+const isMemory = Path === ":memory:"
 
 export type Transaction = SQLiteTransaction<"sync", void>
 
@@ -82,16 +87,22 @@ function migrations(dir: string): Journal {
 }
 
 export const Client = lazy(() => {
-  log.info("opening database", { path: Path })
+  log.info("opening database", { path: Path, memory: isMemory })
 
   const db = init(Path)
 
-  db.run("PRAGMA journal_mode = WAL")
-  db.run("PRAGMA synchronous = NORMAL")
-  db.run("PRAGMA busy_timeout = 5000")
-  db.run("PRAGMA cache_size = -64000")
+  // WAL journaling + checkpointing only apply to on-disk databases. An
+  // in-memory DB cannot use WAL (SQLite silently keeps journal_mode = "memory")
+  // and never writes .wal/.shm sidecar files, so skip those PRAGMAs entirely —
+  // this is part of what makes ephemeral startup cheap.
+  if (!isMemory) {
+    db.run("PRAGMA journal_mode = WAL")
+    db.run("PRAGMA synchronous = NORMAL")
+    db.run("PRAGMA busy_timeout = 5000")
+    db.run("PRAGMA cache_size = -64000")
+    db.run("PRAGMA wal_checkpoint(PASSIVE)")
+  }
   db.run("PRAGMA foreign_keys = ON")
-  db.run("PRAGMA wal_checkpoint(PASSIVE)")
 
   // Apply schema migrations
   const entries =

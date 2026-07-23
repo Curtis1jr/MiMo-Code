@@ -245,6 +245,15 @@ export const Flag = {
   MIMOCODE_DISABLE_EMBEDDED_WEB_UI: truthy("MIMOCODE_DISABLE_EMBEDDED_WEB_UI"),
   MIMOCODE_DB: process.env["MIMOCODE_DB"],
 
+  // Defaults to false. When enabled, mimocode runs in EPHEMERAL mode: the SQLite
+  // database lives entirely in memory (":memory:") instead of on disk, so nothing
+  // is persisted and startup skips the on-disk file open + WAL journaling +
+  // checkpoint. The schema is built by applying all migrations once against the
+  // fresh in-memory DB (fast, no disk I/O). Intended for throwaway/disposable
+  // runs — tests, CI, one-off tasks, isolate worktrees — where data need not
+  // survive the process. An explicit MIMOCODE_DB still takes precedence.
+  MIMOCODE_EPHEMERAL: truthy("MIMOCODE_EPHEMERAL"),
+
   // Defaults to true — all channels share a single mimocode.db. The per-channel
   // DB isolation (mimocode-{channel}.db) is unnecessary for mimocode since we
   // don't ship multiple release channels yet. Use MIMOCODE_HOME to isolate dev
