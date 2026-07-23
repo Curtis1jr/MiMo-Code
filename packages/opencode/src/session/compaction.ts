@@ -18,6 +18,8 @@ import { InstanceState } from "@/effect"
 import { isOverflow as overflow, usable } from "./overflow"
 import { makeRuntime } from "@/effect/run-service"
 import { fn } from "@/util/fn"
+import { FusionRouter } from "./fusion-router"
+import { Flag } from "@/flag/flag"
 
 const log = Log.create({ service: "session.compaction" })
 
@@ -406,6 +408,26 @@ export const layer: Layer.Layer<
       if (result === "continue" && input.auto) {
         if (replay) {
           const original = replay.info
+          // Fusion Router live-switch (P5). At compaction boundaries we can swap
+          // the Lead/Sidekick model with no additional cache-miss cost because
+          // the summary itself already invalidates cache. Consume the verdict
+          // (non-persistent, in-memory) and choose the new model when the user
+          // has opted into fusion.enabled and configured both lead+sidekick.
+          const fusionCfg = cfg.experimental?.fusion
+          const routerVerdict =
+            Flag.MIMOCODE_EXPERIMENTAL_FUSION && fusionCfg?.enabled
+              ? FusionRouter.consume(input.sessionID)
+              : undefined
+          const swapTarget: "lead" | "sidekick" | undefined =
+            routerVerdict?.decision === "upgrade" && fusionCfg?.lead
+              ? "lead"
+              : routerVerdict?.decision === "downgrade" && fusionCfg?.sidekick
+                ? "sidekick"
+                : undefined
+          const swapModel = swapTarget === "lead" ? fusionCfg?.lead : swapTarget === "sidekick" ? fusionCfg?.sidekick : undefined
+          const nextModel = swapModel
+            ? { providerID: swapModel.providerID as ProviderID, modelID: swapModel.modelID as ModelID }
+            : original.model
           const replayMsg = yield* session.updateMessage({
             id: MessageID.ascending(),
             role: "user",
@@ -413,11 +435,22 @@ export const layer: Layer.Layer<
             agentID: input.agentID ?? undefined,
             time: { created: Date.now() },
             agent: original.agent,
-            model: original.model,
+            model: nextModel,
             format: original.format,
             tools: original.tools,
             system: original.system,
           })
+          if (swapTarget && swapModel && routerVerdict) {
+            yield* bus.publish(FusionRouter.Event.ModelSwitched, {
+              sessionID: input.sessionID,
+              agentID: input.agentID,
+              from: "unknown",
+              to: swapTarget,
+              reason: routerVerdict.reason,
+              providerID: swapModel.providerID,
+              modelID: swapModel.modelID,
+            })
+          }
           for (const part of replay.parts) {
             if (part.type === "compaction") continue
             const replayPart =

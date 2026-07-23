@@ -424,6 +424,33 @@ const InfoSchema = Schema.Struct({
         description:
           "Max mode (experimental): the 'max' agent runs N parallel reasoning candidates each step, picks the best via a judge call, and executes only the winner.",
       }),
+      fusion: Schema.optional(
+        Schema.Struct({
+          enabled: Schema.optional(Schema.Boolean).annotate({
+            description:
+              "Live-switch Lead/Sidekick models at compaction boundaries based on Fusion Router verdicts. Off by default — shadow-mode observation still fires when MIMOCODE_EXPERIMENTAL_FUSION=1 regardless of this flag.",
+          }),
+          lead: Schema.optional(
+            Schema.Struct({
+              providerID: Schema.String,
+              modelID: Schema.String,
+            }),
+          ).annotate({
+            description: "Lead model used when the router decides to upgrade at a compaction boundary.",
+          }),
+          sidekick: Schema.optional(
+            Schema.Struct({
+              providerID: Schema.String,
+              modelID: Schema.String,
+            }),
+          ).annotate({
+            description: "Sidekick model used when the router decides to downgrade at a compaction boundary.",
+          }),
+        }),
+      ).annotate({
+        description:
+          "Fusion two-agent mode (experimental): Lead plans/reviews, Sidekick executes. Router decisions materialize as model swaps at compaction boundaries when `enabled` is true and both lead/sidekick models are configured.",
+      }),
     }),
   ),
   workflow: Schema.optional(

@@ -73,17 +73,60 @@ export const DecisionSuggested = BusEvent.define(
     decision: DecisionEnum,
     reason: ReasonEnum,
     softScore: z.number().int().min(0).optional(),
-    // Shadow-mode marker: routing is observed only, no model switch yet.
+    // Shadow-mode marker: routing observed only, no live model switch happened.
+    // False when the verdict was actually consumed by compaction.
     shadow: z.boolean(),
   }),
 )
 
-export const Event = { DecisionSuggested }
+export const ModelSwitched = BusEvent.define(
+  "fusion.router.model_switched",
+  z.object({
+    sessionID: SessionID.zod,
+    agentID: z.string().optional(),
+    from: z.enum(["lead", "sidekick", "unknown"]),
+    to: z.enum(["lead", "sidekick"]),
+    reason: ReasonEnum,
+    providerID: z.string(),
+    modelID: z.string(),
+  }),
+)
+
+export const Event = { DecisionSuggested, ModelSwitched }
 
 /**
- * Compute a routing verdict and publish it on the bus. Returns the verdict so
- * callers can log without a second decide() call. In shadow mode (currently the
- * only mode) the verdict is informational — no model or agent switch happens.
+ * In-memory ledger of the most recent non-keep verdict per session, waiting to
+ * be consumed at the next compaction boundary. Non-persistent by design — a
+ * process restart resets Fusion routing back to sidekick, which is safe.
+ */
+const latestBySession = new Map<string, Verdict>()
+
+/**
+ * Consume (read + clear) the latest verdict pending for `sessionID`. Returns
+ * undefined when no non-keep verdict is pending. Compaction is expected to
+ * call this at the boundary to decide whether to swap models.
+ */
+export function consume(sessionID: string): Verdict | undefined {
+  const verdict = latestBySession.get(sessionID)
+  if (verdict) latestBySession.delete(sessionID)
+  return verdict
+}
+
+/**
+ * Test-only helper: clear all pending verdicts. Not exported through the
+ * public FusionRouter namespace facade to keep production callers off it.
+ */
+export function _reset() {
+  latestBySession.clear()
+}
+
+/**
+ * Compute a routing verdict and publish it on the bus. Non-keep verdicts are
+ * stashed so the next compaction boundary can consume them. Returns the verdict
+ * so callers can log without a second decide() call.
+ *
+ * Takes an already-resolved Bus.Interface so callers don't leak Bus.Service
+ * into their own Effect requirements.
  */
 export const observe = Effect.fn("FusionRouter.observe")(function* (input: {
   bus: BusInterface
@@ -100,12 +143,17 @@ export const observe = Effect.fn("FusionRouter.observe")(function* (input: {
     reason: verdict.reason,
     softScore: verdict.softScore,
   })
+  if (verdict.decision !== "keep") {
+    latestBySession.set(input.sessionID, verdict)
+  }
   yield* input.bus.publish(DecisionSuggested, {
     sessionID: input.sessionID,
     agentID: input.agentID,
     decision: verdict.decision,
     reason: verdict.reason,
     softScore: verdict.softScore,
+    // Still shadow until compaction consumes it. `consume()` doesn't republish;
+    // the ModelSwitched event carries the "live" signal instead.
     shadow: true,
   })
   return verdict
