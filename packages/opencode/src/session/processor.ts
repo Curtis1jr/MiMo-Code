@@ -27,6 +27,7 @@ import { isRecord } from "@/util/record"
 import { createTextNgramMonitor, type TextNgramMonitor } from "./prompt/text-ngram-detection"
 import { Flag } from "@/flag/flag"
 import { monitor as tryBestMonitor, type TryBestIncident } from "./try-best-detector"
+import { FusionRouter } from "./fusion-router"
 
 const DOOM_LOOP_THRESHOLD = 3
 const log = Log.create({ service: "session.processor" })
@@ -280,6 +281,25 @@ export const layer: Layer.Layer<
             action: incident.evidence.action,
           })
           .pipe(Effect.ignore)
+        // Fusion Router shadow-mode observation. No model or agent switch — only
+        // publishes a routing verdict on the bus so we can validate the decision
+        // policy in real sessions before P5 wires the actual switch.
+        yield* FusionRouter.observe({
+          bus,
+          sessionID: ctx.sessionID,
+          agentID: ctx.assistantMessage.agentID,
+          signals: {
+            tryBestFired: true,
+            tryBestReason: incident.reason,
+            consecutiveSidekickFailures: 0,
+            retryCount: 0,
+            pressureLevel: 0,
+            emptyStepStreak: 0,
+            textNgramRepeat: false,
+            easyTurnsSinceUpgrade: 0,
+            currentlyOnLead: false,
+          },
+        }).pipe(Effect.ignore)
       })
 
       const settleToolCall = Effect.fn("SessionProcessor.settleToolCall")(function* (toolCallID: string) {
