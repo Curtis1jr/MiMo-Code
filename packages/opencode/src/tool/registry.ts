@@ -11,6 +11,7 @@ import { MemoryTool } from "./memory"
 import { ReadTool } from "./read"
 import { ViewImageTool } from "./view-image"
 import { ActorTool } from "./actor"
+import { HandoffBriefTool } from "./handoff-brief"
 import { TaskTool } from "./task"
 import { CronTool } from "./cron"
 import { SessionTool } from "./session"
@@ -137,6 +138,7 @@ export const layer = Layer.effect(
 
     const invalid = yield* InvalidTool
     const actor = yield* ActorTool
+    const handoffBrief = yield* HandoffBriefTool
     const read = yield* ReadTool
     const viewimage = yield* ViewImageTool
     const question = yield* QuestionTool
@@ -244,6 +246,7 @@ export const layer = Layer.effect(
           write: Tool.init(writetool),
           notebookedit: Tool.init(notebookedit),
           actor: Tool.init(actor),
+          handoffBrief: Tool.init(handoffBrief),
           fetch: Tool.init(webfetch),
           search: Tool.init(websearch),
           code: Tool.init(codesearch),
@@ -278,6 +281,7 @@ export const layer = Layer.effect(
             tool.write,
             tool.notebookedit,
             tool.actor,
+            ...(Flag.MIMOCODE_EXPERIMENTAL_FUSION ? [tool.handoffBrief] : []),
             tool.fetch,
             tool.search,
             tool.code,
@@ -405,6 +409,11 @@ export const layer = Layer.effect(
       // rather than an allowlist: every other agent — primaries without an
       // allowlist (build/plan/compose) and subagents — must not see `session`.
       filtered = filtered.filter((tool) => tool.id !== "session" || input.agent.name === "orchestrator")
+
+      // `handoff_brief` is fusion-lead-only. Sidekick uses regular write tools
+      // to execute the brief; other agents don't participate in the two-agent
+      // dance. Gate on the agent name for the same reason as `session`.
+      filtered = filtered.filter((tool) => tool.id !== HandoffBriefTool.id || input.agent.name === "fusion-lead")
 
       return { filtered, useGPTTools }
     })

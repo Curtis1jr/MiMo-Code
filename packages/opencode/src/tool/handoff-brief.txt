@@ -1,0 +1,23 @@
+Delegate mechanical execution to fusion-sidekick with a STRUCTURED brief.
+
+This is the ONLY way you should hand implementation work off. Do not spawn `fusion-sidekick` via the `actor` tool with a free-form prompt — this tool exists to force a design-spec shape so the sidekick has unambiguous acceptance criteria.
+
+The tool renders your fields into a canonical brief and then runs `fusion-sidekick` synchronously. When it returns, you receive the sidekick's final message (a `**Status**: success|partial|failed|blocked` header + summary + touched files). Read that message and decide the next step: accept, revise the brief and re-delegate, or escalate to the user.
+
+## Field guidance
+
+- **goal** — one sentence, unambiguous. "Refactor `foo()` to be O(1)" beats "improve foo".
+- **constraints** — at least one hard rule the sidekick MUST hold. Write the invariant, not the mechanism ("operator() must not scan the full token list" — not "use a Set").
+- **definition_of_done** — verifiable outcomes. Prefer a test command + expected result, or an assertion that must hold on the codebase.
+- **edge_cases** — inputs the sidekick must handle. Empty list is fine when there are genuinely none, but stop and think first.
+- **do_not** — forbidden actions when they aren't obvious from constraints. Use sparingly.
+- **files_expected** — files the sidekick is likely to touch. Helps the sidekick locate the work without re-exploring the repo.
+- **test_command** — the shell command the sidekick should run to verify DoD.
+
+## When NOT to use this
+
+- Root-cause debugging where each step's context builds on the previous — you should read the code yourself.
+- Interpreting ambiguous user intent — clarify with the user first, don't delegate a guess.
+- Trivial one-line changes — the delegation overhead exceeds the token savings.
+
+If you find yourself writing "then call `json.parse` then …" in the brief, STOP: you're dictating code instead of specifying a contract. Rewrite as constraints + DoD.
