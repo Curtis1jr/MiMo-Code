@@ -3589,6 +3589,26 @@ NOTE: At any point in time through this workflow you should feel free to ask the
             const maxModeCfg = (yield* config.get()).experimental?.maxMode
             const useMaxMode =
               agent.name === MaxMode.MAX_MODE_AGENT && maxModeCfg !== undefined && format.type !== "json_schema"
+            // Resolve the configured per-candidate model refs once per step. A
+            // single misconfigured ref (bad provider/model id) collapses the
+            // whole list to `undefined`, which is picked up by runMaxStep as
+            // "use the step's default model for all candidates" — safe fallback,
+            // no partial-fanout surprises. getModel raises defects (throws
+            // inside Effect.fn), so we catch on the defect channel.
+            const maxModeModels = useMaxMode && maxModeCfg?.models && maxModeCfg.models.length > 0
+              ? yield* Effect.all(
+                  maxModeCfg.models.map((m) =>
+                    provider.getModel(m.providerID as ProviderID, m.modelID as ModelID),
+                  ),
+                ).pipe(
+                  Effect.catchDefect((e) => {
+                    log.warn("max-mode models resolve failed, falling back to step model", {
+                      error: e instanceof Error ? e.message : String(e),
+                    })
+                    return Effect.succeed(undefined as Provider.Model[] | undefined)
+                  }),
+                )
+              : undefined
 
             const processArgs = {
               user: lastUser,
@@ -3654,6 +3674,8 @@ NOTE: At any point in time through this workflow you should feel free to ask the
                   handle,
                   llm,
                   candidates: maxModeCfg?.candidates,
+                  mode: maxModeCfg?.mode,
+                  models: maxModeModels,
                   setStatus: (message) =>
                     status.set(sessionID, message ? { type: "busy", message } : { type: "busy" }),
                 })

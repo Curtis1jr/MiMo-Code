@@ -67,6 +67,22 @@ export type MaxStepInput = {
   /** Number of parallel candidates (default 5). */
   candidates?: number
   /**
+   * Optional per-candidate model dispatch. When non-empty, candidate i uses
+   * models[i % models.length] instead of `model`. Used by MoA-style max mode
+   * where different reasoners produce a more diverse candidate pool. When
+   * omitted or empty, all candidates share `model` (legacy behaviour).
+   */
+  models?: Provider.Model[]
+  /**
+   * Selection strategy. "pick" (default, legacy) asks the judge for a single
+   * winning index. "aggregate" uses a fusion-lead aggregator that returns
+   * `{picked_index, revisions}` and appends the revisions to the winner's
+   * message before replay, so the next step's model sees them. Both modes
+   * still replay exactly ONE candidate through the processor — the aggregate
+   * branch does NOT execute multiple candidates.
+   */
+  mode?: "pick" | "aggregate"
+  /**
    * Optional hook to surface progress to the UI during the (otherwise
    * invisible) candidate + judge phases. Called with a short English label,
    * or undefined to clear back to a plain busy state.
@@ -108,6 +124,7 @@ export function toSchemaOnlyTools(tools: Record<string, AITool>): Record<string,
 export const runCandidate = (
   input: MaxStepInput,
   index: number,
+  modelOverride?: Provider.Model,
 ): Effect.Effect<Candidate | null | "text-repeat"> =>
   Effect.gen(function* () {
     const monitor = createTextNgramMonitor()
@@ -127,7 +144,7 @@ export const runCandidate = (
       user: input.user,
       sessionID: input.sessionID,
       parentSessionID: input.parentSessionID,
-      model: input.model,
+      model: modelOverride ?? input.model,
       agent: input.agent,
       permission: input.permission,
       system: input.system,
@@ -313,6 +330,122 @@ export const judge = (input: MaxStepInput, candidates: Candidate[]): Effect.Effe
     }),
   )
 
+const AGGREGATOR_SYSTEM = [
+  "You are an aggregator (mixture-of-agents lead) selecting the best next step for a coding agent.",
+  "You will see several independent candidate drafts for the SAME step. Each candidate contains its reasoning, its message text, and the tool calls it proposes.",
+  "Your job:",
+  "1. Pick ONE candidate (`picked_index`) whose plan is the most correct, grounded, and safe.",
+  "2. Optionally emit `revisions` — a short list of concrete, targeted improvements the picked candidate MUST apply on top of its own draft. Keep each revision to one sentence, imperative, and directly grounded in what the OTHER candidates got right that the picked one missed.",
+  "Do NOT rewrite the candidate. Do NOT emit stylistic nits. Only emit revisions when they materially improve correctness or safety of the next step.",
+  "Return STRICT JSON: {\"picked_index\": number, \"revisions\": string[]}. No commentary outside JSON.",
+].join("\n")
+
+/**
+ * Parse the aggregator's JSON reply. Falls back to {pick:0, revisions:[]} on
+ * any parse/type/range issue — a flaky aggregator must never block the step.
+ * The parser tolerates extra prose around the JSON block (some models still
+ * add trailing commentary), so it scans for the first {...} JSON object.
+ */
+export function parseAggregatorReply(
+  out: string,
+  count: number,
+): { pick: number; revisions: string[] } {
+  const jsonMatch = out.match(/\{[\s\S]*\}/)
+  if (!jsonMatch) return { pick: 0, revisions: [] }
+  const parsed = (() => {
+    try {
+      return JSON.parse(jsonMatch[0])
+    } catch {
+      return null
+    }
+  })()
+  if (!parsed || typeof parsed !== "object") return { pick: 0, revisions: [] }
+  const raw = (parsed as Record<string, unknown>).picked_index
+  const picked = typeof raw === "number" ? raw : typeof raw === "string" ? parseInt(raw, 10) : NaN
+  const pick = Number.isInteger(picked) && picked >= 0 && picked < count ? picked : 0
+  const revsRaw = (parsed as Record<string, unknown>).revisions
+  const revisions = Array.isArray(revsRaw)
+    ? revsRaw.filter((r): r is string => typeof r === "string" && r.trim().length > 0).map((r) => r.trim())
+    : []
+  return { pick, revisions }
+}
+
+/**
+ * Ask a fusion-lead aggregator to merge candidate plans, pick a winner, and
+ * emit revisions. Same retry / defect-conversion posture as `judge`.
+ */
+export const aggregate = (
+  input: MaxStepInput,
+  candidates: Candidate[],
+): Effect.Effect<{ pick: number; revisions: string[]; usage?: any }> =>
+  Effect.gen(function* () {
+    if (candidates.length === 1) return { pick: 0, revisions: [], usage: undefined }
+
+    const rendered = candidates.map((c, i) => renderCandidate(c, i)).join("\n\n")
+    const aggregatorPrompt = [
+      `There are ${candidates.length} candidates, indexed 0..${candidates.length - 1}.`,
+      "",
+      rendered,
+      "",
+      "Return STRICT JSON matching {picked_index: number, revisions: string[]}.",
+    ].join("\n")
+
+    const messages: ModelMessage[] = [{ role: "user", content: aggregatorPrompt }]
+
+    let out = ""
+    let usage: any | undefined
+    const stream = input.llm.stream({
+      user: input.user,
+      sessionID: input.sessionID,
+      parentSessionID: input.parentSessionID,
+      model: input.model,
+      agent: input.agent,
+      permission: input.permission,
+      system: [AGGREGATOR_SYSTEM],
+      messages,
+      tools: {},
+      toolChoice: "none",
+      agentID: input.agentID,
+    })
+
+    yield* Stream.runForEach(stream, (event: LLM.Event) => {
+      if (event.type === "text-delta") out += event.text
+      else if (event.type === "finish-step") usage = event.usage
+      else if (event.type === "error") return Effect.fail(event.error)
+      return Effect.void
+    })
+
+    const parsed = parseAggregatorReply(out, candidates.length)
+    return { ...parsed, usage }
+  }).pipe(
+    Effect.catchCauseIf(
+      (cause) => !Cause.hasInterruptsOnly(cause),
+      (cause) => Effect.fail(Cause.squash(cause)),
+    ),
+    Effect.retry({
+      while: LLM.isTransientCapacityError,
+      schedule: LLM.persistentRetrySchedule,
+    }),
+    Effect.catch((e) => {
+      log.warn("aggregator failed, defaulting to candidate 0 with no revisions", {
+        error: e instanceof Error ? e.message : String(e),
+      })
+      return Effect.succeed({ pick: 0, revisions: [], usage: undefined })
+    }),
+  )
+
+/**
+ * Render aggregator revisions as a distinctive block appended to the winner's
+ * text. Kept as its own function so max-mode.ts stays the single source of
+ * truth for the format — downstream logs / history views can match on the
+ * `_AGGREGATOR_REVISIONS_MARKER` sentinel to strip or highlight it.
+ */
+export const _AGGREGATOR_REVISIONS_MARKER = "\n\n---\n**Aggregator revisions (apply on the next step):**\n"
+function appendRevisions(text: string, revisions: string[]): string {
+  if (revisions.length === 0) return text
+  return text + _AGGREGATOR_REVISIONS_MARKER + revisions.map((r) => `- ${r}`).join("\n")
+  }
+
 /**
  * Run one max-mode step: N parallel propose-only candidates → judge picks the
  * winner → replay (execute) the winner through the processor. Returns the same
@@ -332,9 +465,13 @@ export const runMaxStep = (input: MaxStepInput): Effect.Effect<SessionProcessor.
     // replay. Shown as the winner's thinking duration.
     const ensembleStartedAt = Date.now()
 
+    const modelList = input.models && input.models.length > 0 ? input.models : undefined
+    const modelForIndex = (i: number): Provider.Model | undefined =>
+      modelList ? modelList[i % modelList.length] : undefined
+
     yield* setStatus(`thinking — ${n} candidates`)
     const results = yield* Effect.all(
-      Array.from({ length: n }, (_, i) => runCandidate(input, i)),
+      Array.from({ length: n }, (_, i) => runCandidate(input, i, modelForIndex(i))),
       { concurrency: n },
     )
     if (results.some((result) => result === "text-repeat")) return "text-repeat"
@@ -358,10 +495,23 @@ export const runMaxStep = (input: MaxStepInput): Effect.Effect<SessionProcessor.
       })
     }
 
-    yield* setStatus(`judging ${survivors.length} candidates`)
-    const { pick, usage: judgeUsage } = yield* judge(input, survivors)
-    const winner = survivors[pick]
-    log.info("max step", { candidates: n, survivors: survivors.length, winner: pick, toolCalls: winner.toolCalls.length })
+    const mode = input.mode ?? "pick"
+    yield* setStatus(
+      mode === "aggregate" ? `aggregating ${survivors.length} candidates` : `judging ${survivors.length} candidates`,
+    )
+    const selection =
+      mode === "aggregate"
+        ? yield* aggregate(input, survivors)
+        : yield* judge(input, survivors).pipe(Effect.map((r) => ({ pick: r.pick, revisions: [] as string[], usage: r.usage })))
+    const winner = survivors[selection.pick]
+    log.info("max step", {
+      candidates: n,
+      survivors: survivors.length,
+      winner: selection.pick,
+      toolCalls: winner.toolCalls.length,
+      mode,
+      revisions: selection.revisions.length,
+    })
 
     // The winner's own usage is what actually enters history, so it (and only
     // it) must drive the message's `tokens` — that field feeds the context
@@ -374,7 +524,7 @@ export const runMaxStep = (input: MaxStepInput): Effect.Effect<SessionProcessor.
     // processor adds to `cost` and the ModelCall metric only — never to
     // `tokens`. So billing/metrics reflect the true ~Nx spend while context
     // estimation stays honest.
-    const overheadUsages = [...survivors.filter((_, i) => i !== pick).map((c) => c.usage), judgeUsage]
+    const overheadUsages = [...survivors.filter((_, i) => i !== selection.pick).map((c) => c.usage), selection.usage]
     const overhead = overheadUsages.reduce(
       (acc, u) => {
         if (!u) return acc
@@ -387,13 +537,23 @@ export const runMaxStep = (input: MaxStepInput): Effect.Effect<SessionProcessor.
       { cost: 0, tokensIn: 0, tokensOut: 0 },
     )
 
+    // In aggregate mode, append the aggregator's revisions to the winner's
+    // visible text so both the user and the NEXT step's model see them. This is
+    // deliberately part of the assistant message (not a separate synthetic
+    // user message) — max mode's contract is already "we aggressively engineer
+    // this turn's message before it's shown", and threading a new user-role
+    // message mid-loop would fight session invariants elsewhere. The
+    // `_AGGREGATOR_REVISIONS_MARKER` sentinel lets downstream tools identify
+    // and, if needed, strip the block.
+    const winnerText = mode === "aggregate" ? appendRevisions(winner.text, selection.revisions) : winner.text
+
     // Clear the max-mode label before replay so the winner streams under the
     // normal busy state.
     yield* setStatus(undefined)
     return yield* input.handle.replay({
       reasoning: winner.reasoning,
       reasoningMetadata: winner.reasoningMetadata,
-      text: winner.text,
+      text: winnerText,
       textMetadata: winner.textMetadata,
       toolCalls: winner.toolCalls,
       finishReason: winner.finishReason,
@@ -401,7 +561,7 @@ export const runMaxStep = (input: MaxStepInput): Effect.Effect<SessionProcessor.
       providerMetadata: winner.providerMetadata,
       tools: input.tools as any,
       messages: input.messages,
-      selection: { winner: pick, total: survivors.length },
+      selection: { winner: selection.pick, total: survivors.length },
       thinkingMs: Date.now() - ensembleStartedAt,
       overhead,
     })

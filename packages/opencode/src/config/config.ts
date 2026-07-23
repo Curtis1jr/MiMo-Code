@@ -419,6 +419,23 @@ const InfoSchema = Schema.Struct({
           candidates: Schema.optional(PositiveInt).annotate({
             description: "Number of parallel reasoning candidates per step in max mode (default 5).",
           }),
+          mode: Schema.optional(Schema.Literals(["pick", "aggregate"])).annotate({
+            description:
+              "Selection strategy. 'pick' (default) picks a single winning candidate via judge. 'aggregate' asks a fusion-lead aggregator to merge candidate plans, pick a winner, and emit revisions that are appended to the winner's message before replay.",
+          }),
+          models: Schema.optional(
+            Schema.mutable(
+              Schema.Array(
+                Schema.Struct({
+                  providerID: Schema.String,
+                  modelID: Schema.String,
+                }),
+              ),
+            ),
+          ).annotate({
+            description:
+              "Per-candidate model dispatch. When set and non-empty, candidate i uses models[i % models.length]. When omitted, all candidates share the current step's model.",
+          }),
         }),
       ).annotate({
         description:

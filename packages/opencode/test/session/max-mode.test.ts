@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { toSchemaOnlyTools, parseJudgeIndex } from "../../src/session/max-mode"
+import { toSchemaOnlyTools, parseJudgeIndex, parseAggregatorReply } from "../../src/session/max-mode"
 
 describe("max-mode toSchemaOnlyTools", () => {
   test("strips execute closures but keeps schema fields", () => {
@@ -50,5 +50,38 @@ describe("max-mode parseJudgeIndex", () => {
 
   test("accepts last valid index", () => {
     expect(parseJudgeIndex("4", 5)).toBe(4)
+  })
+})
+
+describe("max-mode parseAggregatorReply", () => {
+  test("parses strict JSON with picked_index and revisions", () => {
+    const out = '{"picked_index": 2, "revisions": ["fix off-by-one", "add null check"]}'
+    expect(parseAggregatorReply(out, 5)).toEqual({ pick: 2, revisions: ["fix off-by-one", "add null check"] })
+  })
+
+  test("tolerates prose around the JSON block", () => {
+    const out = 'Here is my verdict: {"picked_index": 1, "revisions": []} — done.'
+    expect(parseAggregatorReply(out, 5)).toEqual({ pick: 1, revisions: [] })
+  })
+
+  test("defaults to {pick:0, revisions:[]} when no JSON present", () => {
+    expect(parseAggregatorReply("candidate 3 wins", 5)).toEqual({ pick: 0, revisions: [] })
+  })
+
+  test("clamps out-of-range picked_index to 0", () => {
+    expect(parseAggregatorReply('{"picked_index": 99, "revisions": []}', 5)).toEqual({ pick: 0, revisions: [] })
+  })
+
+  test("filters non-string / empty revisions", () => {
+    const out = '{"picked_index": 0, "revisions": ["real revision", 42, "", "   ", "another"]}'
+    expect(parseAggregatorReply(out, 5)).toEqual({ pick: 0, revisions: ["real revision", "another"] })
+  })
+
+  test("survives malformed JSON without throwing", () => {
+    expect(parseAggregatorReply('{"picked_index": 1, "revisions": [', 5)).toEqual({ pick: 0, revisions: [] })
+  })
+
+  test("accepts stringified picked_index", () => {
+    expect(parseAggregatorReply('{"picked_index": "3", "revisions": []}', 5)).toEqual({ pick: 3, revisions: [] })
   })
 })
