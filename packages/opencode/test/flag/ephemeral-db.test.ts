@@ -68,7 +68,10 @@ function probe(env: Record<string, string | undefined>) {
 describe("MIMOCODE_EPHEMERAL", () => {
   test("on: uses in-memory DB, applies schema, writes nothing to disk", () => {
     const r = probe({ MIMOCODE_EPHEMERAL: "1" })
-    expect(r.path).toBe(":memory:")
+    // Ephemeral resolves to a named shared-cache in-memory URI (NOT bare
+    // ":memory:", which would be private per connection) so every connection in
+    // the process shares one in-memory DB. See the same-DB test below.
+    expect(r.path).toBe("file:mimocode-ephemeral?mode=memory&cache=shared")
     // Schema is present and queryable: migrations recorded, session table exists.
     expect(r.migrations).toBeGreaterThan(0)
     expect(r.sessions).toBe(0)
@@ -93,5 +96,69 @@ describe("MIMOCODE_EPHEMERAL", () => {
     expect(r.path).not.toBe(":memory:")
     expect(r.path.endsWith("override.db")).toBe(true)
     expect(r.fileExists).toBe(true)
+  })
+
+  // THE core guarantee: within one process, ALL database access hits the SAME
+  // in-memory database. We prove it by writing a row through the app's DB layer
+  // (Database.use → the lazy() singleton connection) and then reading it back
+  // through a SECOND, independently opened connection to the same resolved
+  // Database.Path in the SAME process. With a bare ":memory:" DB that second
+  // connection would be a brand-new EMPTY database and see 0 rows; with the
+  // shared-cache URI it sees the row, proving one shared DB.
+  test("same process: a second connection sees data written via the app DB", () => {
+    const dataHome = fs.mkdtempSync(path.join(os.tmpdir(), "mimocode-ephemeral-shared-"))
+    const merged: Record<string, string | undefined> = { ...process.env }
+    delete merged.MIMOCODE_DB
+    merged.XDG_DATA_HOME = dataHome
+    merged.MIMOCODE_EPHEMERAL = "1"
+
+    const script = `
+      const { Database } = await import("./src/storage/index.ts")
+      const { Database: BunDatabase } = await import("bun:sqlite")
+
+      // Touch the app DB first so the lazy() singleton opens the (shared-cache)
+      // connection and applies migrations, then write through that SAME
+      // connection. A dedicated table keeps this independent of app schema.
+      const marker = "shared_marker_" + Date.now()
+      Database.use((db) => {
+        db.$client.run("CREATE TABLE shared_probe (v TEXT)")
+        db.$client.run("INSERT INTO shared_probe (v) VALUES (?)", [marker])
+      })
+
+      // Open a SECOND, independent connection to the SAME resolved path and read
+      // it back. For bare ":memory:" this is a different EMPTY database and the
+      // table would not even exist; for the shared-cache URI it is the SAME DB.
+      const second = new BunDatabase(Database.Path)
+      let viaSecond = -1
+      try {
+        viaSecond = second.query("SELECT count(*) AS n FROM shared_probe WHERE v = ?").get(marker).n
+      } catch (e) {
+        viaSecond = -1 // table missing => a separate, empty in-memory DB
+      }
+      second.close()
+
+      const viaApp = Database.use((db) =>
+        db.$client.query("SELECT count(*) AS n FROM shared_probe WHERE v = ?").get(marker).n,
+      )
+
+      process.stdout.write(JSON.stringify({ path: Database.Path, viaSecond, viaApp }))
+    `
+    const result = Bun.spawnSync({
+      cmd: [process.execPath, "--conditions=browser", "-e", script],
+      cwd: process.cwd(),
+      env: merged,
+    })
+    fs.rmSync(dataHome, { recursive: true, force: true })
+    if (result.exitCode !== 0) {
+      throw new Error("shared-db probe failed: " + result.stderr.toString())
+    }
+    const out = JSON.parse(result.stdout.toString()) as { path: string; viaSecond: number; viaApp: number }
+
+    expect(out.path).toBe("file:mimocode-ephemeral?mode=memory&cache=shared")
+    // The app-layer singleton obviously sees its own write.
+    expect(out.viaApp).toBe(1)
+    // The independent second connection sees the SAME row => one shared DB.
+    // (Would be 0 for a bare ":memory:" private-per-connection database.)
+    expect(out.viaSecond).toBe(1)
   })
 })

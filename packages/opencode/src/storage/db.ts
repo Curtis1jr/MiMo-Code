@@ -34,6 +34,16 @@ export function getChannelPath() {
   return path.join(Global.Path.data, `mimocode-${safe}.db`)
 }
 
+// A bare ":memory:" database is PRIVATE PER CONNECTION: a second connection
+// opened with ":memory:" gets its own brand-new empty database, not the one the
+// first connection populated. The ephemeral mode must guarantee that every
+// database access for the whole process hits the SAME in-memory database, so it
+// uses a named shared-cache URI instead: any connection in this process that
+// opens this exact URI (while at least one connection stays open) shares the one
+// underlying in-memory database. This also keeps the fast in-memory startup —
+// journal_mode stays "memory" and nothing spills to disk.
+export const EPHEMERAL_MEMORY_URI = "file:mimocode-ephemeral?mode=memory&cache=shared"
+
 export const Path = iife(() => {
   if (Flag.MIMOCODE_DB) {
     if (Flag.MIMOCODE_DB === ":memory:" || path.isAbsolute(Flag.MIMOCODE_DB)) return Flag.MIMOCODE_DB
@@ -41,11 +51,13 @@ export const Path = iife(() => {
   }
   // Ephemeral runs use an in-memory DB: nothing persists and startup skips the
   // on-disk file open + WAL checkpoint. An explicit MIMOCODE_DB above wins.
-  if (Flag.MIMOCODE_EPHEMERAL) return ":memory:"
+  if (Flag.MIMOCODE_EPHEMERAL) return EPHEMERAL_MEMORY_URI
   return getChannelPath()
 })
 
-const isMemory = Path === ":memory:"
+// True for any in-memory database: bare ":memory:" or a "mode=memory" URI. WAL
+// journaling and .wal/.shm sidecars do not apply to either.
+const isMemory = Path === ":memory:" || Path.startsWith("file:") && Path.includes("mode=memory")
 
 export type Transaction = SQLiteTransaction<"sync", void>
 
