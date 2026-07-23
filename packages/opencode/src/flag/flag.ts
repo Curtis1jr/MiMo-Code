@@ -219,6 +219,12 @@ export const Flag = {
   // global singleton workspace and child permission-approval routing. Enable with
   // MIMOCODE_EXPERIMENTAL_ORCHESTRATOR=true (or the umbrella MIMOCODE_EXPERIMENTAL).
   MIMOCODE_EXPERIMENTAL_ORCHESTRATOR: MIMOCODE_EXPERIMENTAL || truthy("MIMOCODE_EXPERIMENTAL_ORCHESTRATOR"),
+  // Defaults to OFF (opt-in): the Fusion two-agent primary mode (Devin-style).
+  // Registers `fusion-lead` and `fusion-sidekick` native agents. Lead is
+  // hard-restricted to plan/review/delegate (edit/write/patch/multiedit hard-deny);
+  // sidekick executes with full write access. Enable via
+  // MIMOCODE_EXPERIMENTAL_FUSION=true or the umbrella MIMOCODE_EXPERIMENTAL.
+  MIMOCODE_EXPERIMENTAL_FUSION: MIMOCODE_EXPERIMENTAL || truthy("MIMOCODE_EXPERIMENTAL_FUSION"),
   // Defaults to true: dynamic workflow + built-in deep-research are on by default.
   // Set MIMOCODE_EXPERIMENTAL_WORKFLOW_TOOL=false to opt out. The env-var name is
   // kept for backwards compat (long-running experiments still pass it as `1`).

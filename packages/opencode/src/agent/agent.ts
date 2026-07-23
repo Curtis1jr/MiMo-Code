@@ -17,6 +17,8 @@ import PROMPT_SUMMARY from "./prompt/summary.txt"
 import PROMPT_COMPACTION from "./prompt/compaction.txt"
 import PROMPT_TITLE from "./prompt/title.txt"
 import PROMPT_ORCHESTRATOR from "../session/prompt/orchestrator.txt"
+import PROMPT_FUSION_LEAD from "./prompt/fusion-lead.txt"
+import PROMPT_FUSION_SIDEKICK from "./prompt/fusion-sidekick.txt"
 import { Permission } from "@/permission"
 import { mergeDeep, pipe, sortBy, values } from "remeda"
 import { Global } from "@/global"
@@ -247,6 +249,68 @@ export const layer = Layer.effect(
                     user,
                   ),
                   mode: "primary" as const,
+                  native: true,
+                },
+              }
+            : {}),
+          // Fusion two-agent primary mode (Devin-style). Registered only when
+          // MIMOCODE_EXPERIMENTAL_FUSION is set. `fusion-lead` is a primary agent
+          // hard-restricted to planning/review/delegation — every write tool
+          // (edit/write/patch/multiedit/notebook_edit) is denied via
+          // hardPermission so no user/session config can relax the invariant.
+          // `fusion-sidekick` is a subagent with full write access; the lead
+          // hands work off to it via structured briefs.
+          ...(Flag.MIMOCODE_EXPERIMENTAL_FUSION
+            ? {
+                "fusion-lead": {
+                  name: "fusion-lead",
+                  color: "#e8a2b8",
+                  description:
+                    "Fusion lead (experimental). Frontier-tier agent that plans, writes handoff briefs, reviews sidekick diffs, and commits — does NOT edit code itself. Delegate mechanical work to fusion-sidekick.",
+                  prompt: PROMPT_FUSION_LEAD,
+                  options: {},
+                  permission: Permission.merge(
+                    defaults,
+                    Permission.fromConfig({
+                      question: "allow",
+                      plan_enter: "allow",
+                      plan_exit: "allow",
+                    }),
+                    user,
+                  ),
+                  // Fusion's core invariant: lead cannot edit code, cannot
+                  // change directory, and cannot silently shell out. bash is
+                  // allowed for read-only diagnostics (git status/log/diff,
+                  // running tests) but every invocation must be asked so lead
+                  // cannot accidentally mutate through it. Re-applied AFTER
+                  // the user merge in runtimePermission so no config relaxes it.
+                  hardPermission: Permission.fromConfig({
+                    edit: { "*": "deny" },
+                    write: { "*": "deny" },
+                    patch: { "*": "deny" },
+                    multiedit: { "*": "deny" },
+                    notebook_edit: { "*": "deny" },
+                    change_directory: { "*": "deny" },
+                    bash: { "*": "ask" },
+                  }),
+                  mode: "primary" as const,
+                  native: true,
+                },
+                "fusion-sidekick": {
+                  name: "fusion-sidekick",
+                  color: "#d5e8d4",
+                  description:
+                    "Fusion sidekick (experimental). Cost-effective agent that executes handoff briefs from fusion-lead with full write access. Returns structured status/summary headers.",
+                  prompt: PROMPT_FUSION_SIDEKICK,
+                  options: {},
+                  permission: Permission.merge(
+                    defaults,
+                    Permission.fromConfig({
+                      change_directory: "deny",
+                    }),
+                    user,
+                  ),
+                  mode: "subagent" as const,
                   native: true,
                 },
               }
