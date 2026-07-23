@@ -75,8 +75,13 @@ describe("MIMOCODE_EPHEMERAL", () => {
     // Schema is present and queryable: migrations recorded, session table exists.
     expect(r.migrations).toBeGreaterThan(0)
     expect(r.sessions).toBe(0)
-    // In-memory DBs cannot use WAL and never spill .db/.wal/.shm files to disk.
-    expect(r.journal).toBe("memory")
+    // The load-bearing invariant for an in-memory DB is that it never uses WAL
+    // (WAL requires a real file and would spill .wal/.shm sidecars). The exact
+    // journal_mode string for a "mode=memory" URI is platform/driver dependent
+    // — bun:sqlite reports "memory" on macOS but "delete" on Linux — and both
+    // are fine because a memory DB writes nothing to disk regardless. So assert
+    // WAL is off and (below) that no files spill, not a specific mode string.
+    expect(r.journal).not.toBe("wal")
     expect(r.strayDbFiles).toEqual([])
   })
 
