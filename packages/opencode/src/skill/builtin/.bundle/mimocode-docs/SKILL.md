@@ -26,10 +26,11 @@ MiMoCode (CLI binary `mimo`) is an agentic coding tool with a terminal UI, built
 | **Dream** | Consolidates recent traces into project memory | `/dream` |
 | **Distill** | Packages repeated manual workflows into skills/subagents/commands | `/distill` |
 | **Scheduled prompts** | Cron/loop: inject a prompt on a schedule or repeating loop (UTC, 5-field) | `cron` tool · `/loop` · `/loops` |
-| **Dynamic workflows** | JS scripts that orchestrate many subagents deterministically (fan-out, pipelines, nesting); built-ins include `compose`, `deep-research`, `fact-check`, and `research-experiment` | `.mimocode/workflows/*.js` + `workflow` tool |
+| **Dynamic workflows** | JS scripts that orchestrate many subagents deterministically (fan-out, pipelines, nesting); built-ins include `compose`, `deep-research`, `fact-check`, `research-experiment`, `moa-review`, and `moa-implement` | `.mimocode/workflows/*.js` + `workflow` tool |
 | **Skills / self-extension** | Add tools, hooks, skills under `.mimocode/` | see the `evolve` skill |
 | **Skill discovery** | `/skill-name` slash invocation (2+ in one message auto-load with an orchestration plan); `skill_search` tool matches by exact name/alias + BM25 and auto-loads high-confidence hits; some builtins (`claude-code`, `codex`) only appear when their CLI is installed | `/` autocomplete · automatic |
 | **MCP** | Local & remote Model Context Protocol servers | `mcp` config + `mimo mcp` |
+| **Fusion Mode (experimental)** | Two-agent Lead+Sidekick with router-driven model swaps at compaction boundaries; ships with `moa-review`, `moa-implement`, and a mixture-of-agents max mode aggregate. Off by default | `MIMOCODE_EXPERIMENTAL_FUSION=1` + `experimental.fusion.*` config |
 
 ## Configuration Basics
 
@@ -67,6 +68,8 @@ For task-oriented walkthroughs — signing in & choosing a model, making memory 
 - **`deep-research`** — comprehensive research report generator (brief → plan → parallel research → reflect → write → cold review). Pass `args: { dir, question, today, depth?, context? }`. Convergent/resumable.
 - **`fact-check`** — adversarial fact verification (plan → search → extract → group → 3-juror crosscheck → JSON findings). Pass the question as `args`.
 - **`research-experiment`** — autonomous metric-improvement loop with baseline, guarded iterations, audit, and report. It requires an eval command, metric extraction rule, and editable-file scope.
+- **`moa-review`** — Mixture-of-Agents diff review: fan out a unified diff to N reviewers (correctness / performance / security-and-style) in parallel, aggregate via `fusion-lead` into a pass/fail verdict. Read-only. Pass `args: { diff, reviewers?, focuses?, aggregatorModel?, minDiffLines? }`. Skips fanout for small diffs unless they touch `security/`, `auth/`, or `data/`.
+- **`moa-implement`** — Mixture-of-Agents implementation: fan out an implementation task to K `fusion-sidekick` agents in isolated worktrees, each producing a `git diff HEAD` patch; `fusion-lead` aggregator picks the winner verbatim and returns it plus per-worktree metadata. Pass `args: { task, k?, aggregatorModel?, context? }`. K clamped to 8.
 
 ## Where Things Live On Disk
 

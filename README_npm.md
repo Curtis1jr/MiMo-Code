@@ -51,7 +51,8 @@ The first launch guides you through configuration automatically. Supported optio
 - **Goal / Stop Condition** — judge model prevents premature stops during autonomous work
 - **Compose Mode** — structured workflow for specs-driven development; recommended via the `/compose-next` skill on the build agent
 - **Builtin Skills** — 20+ reusable instruction sets (PDF/Office generation, research, design, and more), invoked via `/skill-name` or auto-matched by relevance
-- **Workflows** — deterministic multi-agent orchestration scripts, including built-in compose, deep-research, fact-check, and research-experiment pipelines
+- **Workflows** — deterministic multi-agent orchestration scripts, including built-in compose, deep-research, fact-check, research-experiment, moa-review, and moa-implement pipelines
+- **Fusion Mode (experimental)** — opt-in two-agent Lead+Sidekick architecture with router-driven model swaps at compaction boundaries; enable via `MIMOCODE_EXPERIMENTAL_FUSION=1` plus `experimental.fusion` config
 - **Voice Input** — real-time streaming voice input powered by TenVAD and MiMo ASR
 - **Dream & Distill** — extract knowledge into memory (`/dream`) and discover reusable workflows (`/distill`)
 

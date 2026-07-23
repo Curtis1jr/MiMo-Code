@@ -137,7 +137,7 @@ The legacy path is the dedicated **compose agent** (switch with `Tab`), which or
 
 Workflows are deterministic JavaScript scripts that orchestrate multiple agents in a sandboxed runtime. Unlike agent conversations, workflows encode fixed phase sequences with bounded retries and automatic parallelization — fire-and-forget execution with no user interaction required.
 
-MiMoCode ships with four built-in workflows:
+MiMoCode ships with six built-in workflows:
 
 | Workflow | Phases | Description |
 |----------|--------|-------------|
@@ -145,10 +145,62 @@ MiMoCode ships with four built-in workflows:
 | `deep-research` | Brief → Plan → Research → Reflect → Write → Review | Multi-source deep research report generator. Plans independent research angles, runs parallel sub-agents to collect cited findings, reflects on gaps, writes a single coherent Markdown report, then cold-reviews citations. Convergent: resumable via file checkpoints. |
 | `fact-check` | Plan → Search → Extract → Group → Crosscheck → Report | Adversarial fact verification. Runs parallel web searches, extracts checkable facts, groups duplicates, then cross-checks each with a 3-juror adversarial vote. Best for precise claims ("Is X true?"). |
 | `research-experiment` | Baseline → Loop → Audit → Report | Autonomous optimization loop for a mechanically verifiable metric. Establishes a baseline, iterates through hypothesize → implement → evaluate → keep/revert, audits for metric gaming, and produces a reproducible result log. Requires a fixed-budget evaluation command and an explicit editable-file scope. |
+| `moa-review` | Fanout → Aggregate | Mixture-of-Agents diff review. Fans out a unified diff to N reviewer agents (correctness, performance, security-and-style) in parallel and aggregates their findings into a single pass/fail verdict via the fusion-lead aggregator. Read-only. Skips fanout automatically for tiny diffs unless they touch `security/`, `auth/`, or `data/`. |
+| `moa-implement` | Fanout → Aggregate | Mixture-of-Agents implementation. Fans out an implementation task to K fusion-sidekick agents in isolated worktrees, each producing a `git diff HEAD` patch. The fusion-lead aggregator picks the winner and returns it verbatim, plus per-worktree metadata so the caller can promote the winner and reclaim the losers. |
 
 The compose workflow complements the interactive path: use the **workflow** when requirements are clear and tasks split cleanly (deterministic, parallel, non-interactive); use the **build** agent with `/compose-next` (or the legacy compose agent) when you need to redirect mid-flow or inject judgment between steps (conversational, interactive).
 
 **Custom workflows:** Place a `.js` file in `.mimocode/workflows/` or `.claude/workflows/` to define your own, or override a built-in by using the same name (e.g. `.mimocode/workflows/compose.js`).
+
+### Fusion Mode (experimental)
+
+Fusion is a two-agent architecture inspired by Devin's Lead+Sidekick pattern: a **Sidekick** does the bulk of the work on a cheaper model, and a **Lead** takes over when the router decides the run needs stronger reasoning. Model swaps land at **compaction boundaries** — a natural cache-miss point, so the swap costs nothing extra beyond the compaction that would happen anyway.
+
+Fusion is **opt-in and off by default**. Enable it in two layers:
+
+```bash
+# 1. Feature flag (env) — turns on shadow-mode observation.
+export MIMOCODE_EXPERIMENTAL_FUSION=1
+```
+
+```jsonc
+// 2. Config gate (~/.config/mimocode/config.json or .mimocode/config.json) —
+//    turns router verdicts into real model swaps.
+{
+  "experimental": {
+    "fusion": {
+      "enabled": true,
+      "sidekick": { "providerID": "anthropic", "modelID": "claude-haiku-4-5" },
+      "lead":     { "providerID": "anthropic", "modelID": "claude-opus-4-7" },
+      "moa_review": {
+        "enabled": true,
+        "reviewers": 3,
+        "focuses": ["correctness", "performance", "security-and-style"],
+        "gate": { "minDiffLines": 20 }
+      }
+    },
+    "maxMode": {
+      "candidates": 3,
+      "mode": "aggregate",
+      "models": [
+        { "providerID": "anthropic", "modelID": "claude-sonnet-4-6" },
+        { "providerID": "openai",    "modelID": "gpt-5" },
+        { "providerID": "google",    "modelID": "gemini-3-pro" }
+      ]
+    }
+  }
+}
+```
+
+**What each piece does:**
+
+- `experimental.fusion.enabled` — enables real Lead/Sidekick swaps at compaction time. Without it (but with the env flag set), the router still runs in shadow mode and emits `FusionRouter.DecisionSuggested` events for observability without changing behavior.
+- `fusion.sidekick` / `fusion.lead` — the two models the router swaps between. Both are required for live swaps; missing either forces shadow mode.
+- `fusion.moa_review` — enables the `moa-review` workflow and sets its defaults (reviewer count, focus areas, cost gate). The gate skips fanout for diffs under `minDiffLines` unless they touch `security/`, `auth/`, or `data/`.
+- `experimental.maxMode.mode: "aggregate"` — upgrades max mode's single-picker judge to a fusion-lead aggregator that merges candidate plans and emits revisions applied to the winner's message.
+- `experimental.maxMode.models` — per-candidate model dispatch for max mode, so the K candidates draw from different reasoners (a classic MoA setup). Candidate `i` uses `models[i % models.length]`; omitting `models` keeps the legacy "all candidates share one model" behavior.
+
+**Migration:** nothing to migrate — Fusion is fully opt-in. Existing runs without `MIMOCODE_EXPERIMENTAL_FUSION` and without the config block see zero behavior change.
 
 ### Builtin Skills
 
