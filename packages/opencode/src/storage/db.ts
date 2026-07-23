@@ -81,6 +81,32 @@ function migrations(dir: string): Journal {
   return sql.sort((a, b) => a.timestamp - b.timestamp)
 }
 
+// A compact, 32-bit-signed fingerprint of the fully-applied migration set,
+// stored in `PRAGMA user_version` as a cheap "schema is current" marker.
+//
+// We cannot store the latest migration's folderMillis directly (it exceeds a
+// 32-bit int), so we fold the migration count + the latest migration's
+// timestamp and name into a stable FNV-1a hash. When this matches the DB's
+// user_version we know the on-disk schema already reflects every bundled
+// migration, so we can skip the (redundant) migrate() scan + startup WAL
+// checkpoint entirely. The value 0 (the default for a fresh DB) can never
+// collide with a real fingerprint, so a fresh DB always takes the full path.
+export function schemaFingerprint(entries: Journal): number {
+  if (entries.length === 0) return 0
+  const latest = entries[entries.length - 1]!
+  const key = `${entries.length}:${latest.timestamp}:${latest.name}`
+  let hash = 0x811c9dc5
+  for (let i = 0; i < key.length; i++) {
+    hash ^= key.charCodeAt(i)
+    hash = Math.imul(hash, 0x01000193)
+  }
+  // Fold to a non-zero positive 31-bit int so it round-trips through
+  // PRAGMA user_version (a signed 32-bit column) without sign ambiguity and
+  // never equals the fresh-DB default of 0.
+  const folded = (hash >>> 1) & 0x7fffffff
+  return folded === 0 ? 1 : folded
+}
+
 export const Client = lazy(() => {
   log.info("opening database", { path: Path })
 
@@ -91,24 +117,45 @@ export const Client = lazy(() => {
   db.run("PRAGMA busy_timeout = 5000")
   db.run("PRAGMA cache_size = -64000")
   db.run("PRAGMA foreign_keys = ON")
+
+  // In a production build OPENCODE_MIGRATIONS is inlined as JSON (no dir scan);
+  // in dev we scan the migration/ folder, but only on the slow path below.
+  const bundled = typeof OPENCODE_MIGRATIONS !== "undefined" ? OPENCODE_MIGRATIONS : undefined
+
+  // Fast path: if the DB's user_version already matches the fingerprint of the
+  // fully-applied migration set, the schema is current. Skip migrate() (which,
+  // even though drizzle already skips applied migrations, still parses the
+  // whole set + emits a misleading "applying migrations" log every boot) AND
+  // skip the synchronous startup WAL checkpoint — the single most expensive
+  // phase (~13-21ms on a large DB) and redundant with wal_autocheckpoint. This
+  // is self-correcting: a stale/zero marker falls through to the full path.
+  const currentVersion = (db.get("PRAGMA user_version") as { user_version?: number } | undefined)?.user_version
+  const bundledFingerprint = bundled ? schemaFingerprint(bundled) : undefined
+  if (!Flag.MIMOCODE_SKIP_MIGRATIONS && bundledFingerprint !== undefined && currentVersion === bundledFingerprint) {
+    log.info("schema current, fast-path startup", { version: currentVersion })
+    return db
+  }
+
+  // Slow path: schema may be stale (fresh DB, real pending migration, or dev
+  // run). Checkpoint the WAL, run the full migrate scan, then stamp the marker.
   db.run("PRAGMA wal_checkpoint(PASSIVE)")
 
-  // Apply schema migrations
-  const entries =
-    typeof OPENCODE_MIGRATIONS !== "undefined"
-      ? OPENCODE_MIGRATIONS
-      : migrations(path.join(import.meta.dirname, "../../migration"))
+  const entries = bundled ?? migrations(path.join(import.meta.dirname, "../../migration"))
   if (entries.length > 0) {
     log.info("applying migrations", {
       count: entries.length,
-      mode: typeof OPENCODE_MIGRATIONS !== "undefined" ? "bundled" : "dev",
+      mode: bundled ? "bundled" : "dev",
     })
     if (Flag.MIMOCODE_SKIP_MIGRATIONS) {
       for (const item of entries) {
         item.sql = "select 1;"
       }
+      migrate(db, entries)
+    } else {
+      migrate(db, entries)
+      // Stamp the marker so the next boot takes the fast path.
+      db.run(`PRAGMA user_version = ${schemaFingerprint(entries)}`)
     }
-    migrate(db, entries)
   }
 
   return db
