@@ -2,7 +2,7 @@ import { Context, Effect, Layer } from "effect"
 import { randomUUID } from "crypto"
 import { Database } from "../storage"
 import { MemoryEventTable } from "./event.sql"
-import { eq, and, desc } from "drizzle-orm"
+import { eq, and, desc, sql } from "drizzle-orm"
 import { Log } from "../util"
 import { Flock } from "@mimo-ai/shared/util/flock"
 
@@ -51,6 +51,7 @@ export interface Receipt {
   readonly event_id: string
   readonly status: EventStatus
   readonly project_sequence: number
+  readonly session_sequence: number
   readonly timestamp: number
 }
 
@@ -97,7 +98,12 @@ export interface Interface {
   readonly getEvent: (event_id: string) => Effect.Effect<EventRecord | null>
 
   /** Health check — is the recorder accepting mutations? */
-  readonly health: () => Effect.Effect<{ queueDepth: number; latestSequence: number }>
+  readonly health: () => Effect.Effect<{
+    queueDepth: number
+    queueCapacity: number
+    latestProjectSequence: number
+    failedEventCount: number
+  }>
 }
 
 export class Service extends Context.Service<Service, Interface>()("@opencode/MemoryRecorder") {}
@@ -106,9 +112,9 @@ export class Service extends Context.Service<Service, Interface>()("@opencode/Me
 // Constants
 // ---------------------------------------------------------------------------
 
-const LOCK_KEY = "memory-recorder:global"
 const LOCK_TIMEOUT_MS = 30_000
 const POLICY_VERSION = "1"
+const QUEUE_CAPACITY = 100
 
 const ALLOWED_WRITERS: MutationWriter[] = [
   "checkpoint-writer",
@@ -136,6 +142,10 @@ export const layer: Layer.Layer<Service, never, never> = Layer.effect(
   Effect.gen(function* () {
     // Per-project sequence counters (in-memory, rebuilt from DB on startup)
     const projectSequences = new Map<string, number>()
+    // Per-session sequence counters
+    const sessionSequences = new Map<string, number>()
+    // Queue depth tracking
+    let queueDepth = 0
 
     /** Get or initialize project sequence from DB */
     function getProjectSequence(projectId: string): number {
@@ -151,6 +161,23 @@ export const layer: Layer.Layer<Service, never, never> = Layer.effect(
       )
       const seq = row?.project_sequence ?? 0
       projectSequences.set(projectId, seq)
+      return seq
+    }
+
+    /** Get or initialize session sequence from DB */
+    function getSessionSequence(sessionId: string): number {
+      if (sessionSequences.has(sessionId)) return sessionSequences.get(sessionId)!
+      const row = Database.use((db) =>
+        db
+          .select({ session_sequence: MemoryEventTable.session_sequence })
+          .from(MemoryEventTable)
+          .where(eq(MemoryEventTable.session_id, sessionId))
+          .orderBy(desc(MemoryEventTable.session_sequence))
+          .limit(1)
+          .get(),
+      )
+      const seq = row?.session_sequence ?? 0
+      sessionSequences.set(sessionId, seq)
       return seq
     }
 
@@ -227,13 +254,29 @@ export const layer: Layer.Layer<Service, never, never> = Layer.effect(
             event_id: eventId,
             status: "rejected_policy" as EventStatus,
             project_sequence: 0,
+            session_sequence: 0,
             timestamp,
           }
         }
 
-        // Acquire exclusive lock for ordering
+        // Queue capacity check
+        if (queueDepth >= QUEUE_CAPACITY) {
+          log.warn("queue full, applying backpressure", { queueDepth, QUEUE_CAPACITY })
+          return {
+            event_id: eventId,
+            status: "rejected_policy" as EventStatus,
+            project_sequence: 0,
+            session_sequence: 0,
+            timestamp,
+          }
+        }
+
+        queueDepth++
+
+        // Acquire per-project lock for ordering
+        const lockKey = `memory-recorder:project:${mutation.project_id}`
         const lock = yield* Effect.tryPromise({
-          try: () => Flock.acquire(LOCK_KEY, { timeoutMs: LOCK_TIMEOUT_MS }),
+          try: () => Flock.acquire(lockKey, { timeoutMs: LOCK_TIMEOUT_MS }),
           catch: (e) => new Error(`Lock timeout: ${e}`),
         }).pipe(Effect.orDie)
 
@@ -251,6 +294,7 @@ export const layer: Layer.Layer<Service, never, never> = Layer.effect(
                 event_id: existing.event_id,
                 status: "duplicate" as EventStatus,
                 project_sequence: existing.project_sequence,
+                session_sequence: existing.session_sequence,
                 timestamp,
               }
             }
@@ -270,6 +314,7 @@ export const layer: Layer.Layer<Service, never, never> = Layer.effect(
                   event_id: eventId,
                   status: "stale_base" as EventStatus,
                   project_sequence: getProjectSequence(mutation.project_id),
+                  session_sequence: getSessionSequence(mutation.session_id),
                   timestamp,
                 }
               }
@@ -280,11 +325,14 @@ export const layer: Layer.Layer<Service, never, never> = Layer.effect(
           const projectSeq = getProjectSequence(mutation.project_id) + 1
           projectSequences.set(mutation.project_id, projectSeq)
 
+          const sessionSeq = getSessionSequence(mutation.session_id) + 1
+          sessionSequences.set(mutation.session_id, sessionSeq)
+
           // 4. Append to ledger (durable in WAL)
           appendEvent({
             ...mutation,
             event_id: eventId,
-            session_sequence: 0,
+            session_sequence: sessionSeq,
             project_sequence: projectSeq,
             timestamp,
             base_revision: mutation.base_revision ?? null,
@@ -294,7 +342,9 @@ export const layer: Layer.Layer<Service, never, never> = Layer.effect(
           log.info("event persisted", {
             event_id: eventId,
             project_id: mutation.project_id,
-            sequence: projectSeq,
+            session_id: mutation.session_id,
+            project_sequence: projectSeq,
+            session_sequence: sessionSeq,
             target: mutation.target,
             operation: mutation.operation,
           })
@@ -303,9 +353,11 @@ export const layer: Layer.Layer<Service, never, never> = Layer.effect(
             event_id: eventId,
             status: "durable" as EventStatus,
             project_sequence: projectSeq,
+            session_sequence: sessionSeq,
             timestamp,
           }
         } finally {
+          queueDepth--
           yield* Effect.tryPromise({
             try: () => lock.release(),
             catch: () => undefined,
@@ -351,7 +403,20 @@ export const layer: Layer.Layer<Service, never, never> = Layer.effect(
     const health: Interface["health"] = () =>
       Effect.sync(() => {
         const seq = getProjectSequence("global")
-        return { queueDepth: 0, latestSequence: seq }
+        const failedCount = Database.use((db) =>
+          db
+            .select({ count: sql<number>`count(*)` })
+            .from(MemoryEventTable)
+            .where(eq(MemoryEventTable.status, "failed"))
+            .get(),
+        )?.count ?? 0
+
+        return {
+          queueDepth,
+          queueCapacity: QUEUE_CAPACITY,
+          latestProjectSequence: seq,
+          failedEventCount: failedCount,
+        }
       })
 
     log.info("MemoryRecorder initialized")

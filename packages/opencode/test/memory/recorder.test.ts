@@ -289,3 +289,131 @@ describe("P1-7: Receipt structure", () => {
     expect(typeof receipt.timestamp).toBe("number")
   })
 })
+
+// ---------------------------------------------------------------------------
+// P1-8: Session sequencing
+// ---------------------------------------------------------------------------
+describe("P1-8: Session sequencing", () => {
+  test("session_sequence increments monotonically per session", async () => {
+    const sessionId = "ses_seq-test"
+    const projectId = "test-session-seq"
+    const receipts: Receipt[] = []
+
+    for (let i = 0; i < 3; i++) {
+      const receipt = await runTest(
+        Effect.gen(function* () {
+          const svc = yield* Service
+          return yield* svc.submit({
+            project_id: projectId,
+            session_id: sessionId,
+            kind: "memory_upsert",
+            scope: "project",
+            target: "MEMORY.md",
+            operation: "upsert",
+            identity_key: `seq-rule-${i}`,
+            content: `# Seq Rule ${i}`,
+            writer: "checkpoint-writer",
+          })
+        }),
+      )
+      receipts.push(receipt)
+    }
+
+    // Session sequences should be 1, 2, 3
+    expect(receipts[0].session_sequence).toBe(1)
+    expect(receipts[1].session_sequence).toBe(2)
+    expect(receipts[2].session_sequence).toBe(3)
+  })
+
+  test("different sessions have independent sequences", async () => {
+    const projectId = "test-session-indep"
+
+    const receipt1 = await runTest(
+      Effect.gen(function* () {
+        const svc = yield* Service
+        return yield* svc.submit({
+          project_id: projectId,
+          session_id: "ses_indep-A",
+          kind: "memory_upsert",
+          scope: "project",
+          target: "MEMORY.md",
+          operation: "upsert",
+          identity_key: "indep-rule-A",
+          content: "# Rule A",
+          writer: "checkpoint-writer",
+        })
+      }),
+    )
+
+    const receipt2 = await runTest(
+      Effect.gen(function* () {
+        const svc = yield* Service
+        return yield* svc.submit({
+          project_id: projectId,
+          session_id: "ses_indep-B",
+          kind: "memory_upsert",
+          scope: "project",
+          target: "MEMORY.md",
+          operation: "upsert",
+          identity_key: "indep-rule-B",
+          content: "# Rule B",
+          writer: "checkpoint-writer",
+        })
+      }),
+    )
+
+    // Both should have session_sequence 1 (independent)
+    expect(receipt1.session_sequence).toBe(1)
+    expect(receipt2.session_sequence).toBe(1)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// P1-9: Health check
+// ---------------------------------------------------------------------------
+describe("P1-9: Health check", () => {
+  test("health reports queue depth and capacity", async () => {
+    const health = await runTest(
+      Effect.gen(function* () {
+        const svc = yield* Service
+        return yield* svc.health()
+      }),
+    )
+
+    expect(health).toHaveProperty("queueDepth")
+    expect(health).toHaveProperty("queueCapacity")
+    expect(health).toHaveProperty("latestProjectSequence")
+    expect(health).toHaveProperty("failedEventCount")
+    expect(typeof health.queueDepth).toBe("number")
+    expect(typeof health.queueCapacity).toBe("number")
+    expect(health.queueCapacity).toBeGreaterThan(0)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// P1-10: Receipt includes session_sequence
+// ---------------------------------------------------------------------------
+describe("P1-10: Receipt includes session_sequence", () => {
+  test("receipt has session_sequence field", async () => {
+    const receipt = await runTest(
+      Effect.gen(function* () {
+        const svc = yield* Service
+        return yield* svc.submit({
+          project_id: "test-receipt-seq",
+          session_id: "ses_receipt-seq",
+          kind: "memory_upsert",
+          scope: "project",
+          target: "MEMORY.md",
+          operation: "upsert",
+          identity_key: "receipt-seq-rule",
+          content: "# Receipt Seq Rule",
+          writer: "checkpoint-writer",
+        })
+      }),
+    )
+
+    expect(receipt).toHaveProperty("session_sequence")
+    expect(typeof receipt.session_sequence).toBe("number")
+    expect(receipt.session_sequence).toBeGreaterThan(0)
+  })
+})
