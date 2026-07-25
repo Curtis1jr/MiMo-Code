@@ -370,6 +370,9 @@ export const layer: Layer.Layer<Service, never, never> = Layer.effect(
       Effect.sync(() => {
         const conditions = [eq(MemoryEventTable.project_id, input.project_id)]
         if (input.target) conditions.push(eq(MemoryEventTable.target, input.target))
+        if (input.since_sequence) {
+          conditions.push(sql`${MemoryEventTable.project_sequence} > ${input.since_sequence}`)
+        }
         const limit = input.limit ?? 100
 
         return Database.use((db) =>

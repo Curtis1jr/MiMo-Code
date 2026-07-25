@@ -13,6 +13,12 @@ import { sqliteTable, text, integer, index } from "drizzle-orm/sqlite-core"
  *   4. Issues accepted + durable receipts
  *
  * Corrections occur through later events — rows are never rewritten.
+ *
+ * Status lifecycle:
+ *   RECEIVED → ACCEPTED → DURABLE → APPLIED
+ *   RECEIVED → ACCEPTED → DURABLE → FAILED
+ *   RECEIVED → ACCEPTED → DURABLE → APPLIED → SUPERSEDED
+ *   RECEIVED → ACCEPTED → DURABLE → APPLIED → COMPACTED
  */
 export const MemoryEventTable = sqliteTable(
   "memory_event",
@@ -44,7 +50,7 @@ export const MemoryEventTable = sqliteTable(
     // "MEMORY.md" | "checkpoint.md" | "MEMORY-<topic>.md" | "checkpoint-<topic>.md"
 
     operation: text().notNull(),
-    // "upsert" | "delete" | "supersede" | "replace"
+    // "upsert" | "delete" | "supersede" | "replace" | "resolve_conflict"
 
     // Semantic identity — dedup key within scope+target
     identity_key: text().notNull(),
@@ -60,12 +66,19 @@ export const MemoryEventTable = sqliteTable(
     // Optimistic concurrency — base revision the writer read before deciding to write
     base_revision: text(),
 
+    // Correction chain — points to the event this supersedes
+    supersedes_event_id: text(),
+
+    // Migration provenance — links to migration receipt
+    migration_receipt_id: text(),
+
     // Policy
     policy_version: text().notNull().default("1"),
 
-    // Lifecycle status — never rewritten
+    // Lifecycle status
     status: text().notNull(),
-    // "accepted" | "durable" | "applied" | "duplicate" | "stale_base" | "semantic_conflict" | "rejected_policy" | "failed"
+    // "received" | "accepted" | "durable" | "applied" | "duplicate" | "stale_base"
+    // | "semantic_conflict" | "rejected_policy" | "failed" | "superseded" | "compacted"
   },
   (table) => [
     index("memory_event_project_idx").on(table.project_id, table.project_sequence),
@@ -73,5 +86,6 @@ export const MemoryEventTable = sqliteTable(
     index("memory_event_identity_idx").on(table.identity_key, table.project_id, table.target),
     index("memory_event_status_idx").on(table.status),
     index("memory_event_timestamp_idx").on(table.timestamp),
+    index("memory_event_supersedes_idx").on(table.supersedes_event_id),
   ],
 )
