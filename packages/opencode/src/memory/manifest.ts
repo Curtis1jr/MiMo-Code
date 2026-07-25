@@ -13,8 +13,11 @@ const log = Log.create({ service: "memory.manifest" })
 // ---------------------------------------------------------------------------
 
 export interface SessionManifest {
+  readonly manifest_id: string
   readonly project_id: string
   readonly session_id: string
+  readonly worker_id: string
+  readonly canonical_store_id: string
   readonly ledger_high_water_mark: number
   readonly projection_revision: number
   readonly projection_hash: string
@@ -22,7 +25,11 @@ export interface SessionManifest {
   readonly recorder_identity: string
   readonly files_loaded: readonly string[]
   readonly memories_loaded: readonly string[]
+  readonly pending_overlay_revision: number
+  readonly conflicts: readonly string[]
+  readonly unresolved_context: readonly string[]
   readonly created_at: number
+  readonly refreshed_at: number
 }
 
 export interface ManifestSnapshot {
@@ -40,6 +47,8 @@ export interface Interface {
   readonly create: (input: {
     project_id: string
     session_id: string
+    worker_id?: string
+    canonical_store_id?: string
     files_loaded?: string[]
     memories_loaded?: string[]
   }) => Effect.Effect<SessionManifest>
@@ -84,6 +93,7 @@ export const layer: Layer.Layer<Service, never, never> = Layer.effect(
     const create: Interface["create"] = (input) =>
       Effect.sync(() => {
         const now = Date.now()
+        const manifestId = `manifest-${input.session_id}-${now}`
 
         // Get current project_sequence as high-water mark
         const row = Database.use((db) =>
@@ -115,8 +125,11 @@ export const layer: Layer.Layer<Service, never, never> = Layer.effect(
         const projectionHash = latestEvent ? contentHash(latestEvent.content) : ""
 
         const manifest: SessionManifest = {
+          manifest_id: manifestId,
           project_id: input.project_id,
           session_id: input.session_id,
+          worker_id: input.worker_id ?? "",
+          canonical_store_id: input.canonical_store_id ?? "",
           ledger_high_water_mark: highWaterMark,
           projection_revision: 1,
           projection_hash: projectionHash,
@@ -124,11 +137,16 @@ export const layer: Layer.Layer<Service, never, never> = Layer.effect(
           recorder_identity: "memory-recorder",
           files_loaded: input.files_loaded ?? [],
           memories_loaded: input.memories_loaded ?? [],
+          pending_overlay_revision: 0,
+          conflicts: [],
+          unresolved_context: [],
           created_at: now,
+          refreshed_at: now,
         }
 
         manifests.set(input.session_id, manifest)
         log.info("manifest created", {
+          manifest_id: manifestId,
           session_id: input.session_id,
           project_id: input.project_id,
           high_water_mark: highWaterMark,
@@ -214,6 +232,7 @@ export const layer: Layer.Layer<Service, never, never> = Layer.effect(
           ledger_high_water_mark: highWaterMark,
           projection_revision: current.projection_revision + 1,
           projection_hash: projectionHash,
+          refreshed_at: now,
         }
 
         manifests.set(session_id, refreshed)
@@ -231,14 +250,21 @@ export const layer: Layer.Layer<Service, never, never> = Layer.effect(
       [
         `## Session Memory Manifest`,
         ``,
+        `Manifest ID: ${manifest.manifest_id}`,
         `Project: ${manifest.project_id}`,
         `Session: ${manifest.session_id}`,
+        `Worker: ${manifest.worker_id || "(none)"}`,
+        `Canonical store: ${manifest.canonical_store_id || "(default)"}`,
         `Ledger high-water mark: ${manifest.ledger_high_water_mark}`,
         `Projection revision: ${manifest.projection_revision}`,
         `Projection hash: ${manifest.projection_hash.slice(0, 16)}...`,
         `Policy version: ${manifest.policy_version}`,
         `Recorder: ${manifest.recorder_identity}`,
+        `Pending overlay revision: ${manifest.pending_overlay_revision}`,
+        `Conflicts: ${manifest.conflicts.length}`,
+        `Unresolved context: ${manifest.unresolved_context.length}`,
         `Created at: ${new Date(manifest.created_at).toISOString()}`,
+        `Refreshed at: ${new Date(manifest.refreshed_at).toISOString()}`,
         ``,
         `**Memory snapshot is pinned.** To see events added after this manifest, request a refresh.`,
       ].join("\n")

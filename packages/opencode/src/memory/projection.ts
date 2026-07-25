@@ -18,6 +18,10 @@ export interface Projection {
   readonly event_count: number
   readonly latest_sequence: number
   readonly generated_at: number
+  readonly high_water_mark: number
+  readonly projection_revision: number
+  readonly policy_version: string
+  readonly recorder_identity: string
 }
 
 // ---------------------------------------------------------------------------
@@ -61,6 +65,10 @@ export function generateProjection(input: {
         event_count: 0,
         latest_sequence: 0,
         generated_at: Date.now(),
+        high_water_mark: 0,
+        projection_revision: 1,
+        policy_version: "1",
+        recorder_identity: "memory-recorder",
       }
     }
 
@@ -103,6 +111,10 @@ export function generateProjection(input: {
       event_count: events.length,
       latest_sequence: latestSequence,
       generated_at: Date.now(),
+      high_water_mark: latestSequence,
+      projection_revision: 1,
+      policy_version: "1",
+      recorder_identity: "memory-recorder",
     }
   })
 }
@@ -163,4 +175,41 @@ export function generateOverlay(input: {
         .all(),
     ).filter((e: any) => e.project_sequence > input.high_water_mark) as EventRecord[],
   )
+}
+
+/**
+ * Atomic projection write: tmp → fsync → rename → parent dir fsync.
+ * Preserves previous projection if write fails.
+ */
+export async function writeProjectionAtomic(
+  filePath: string,
+  content: string,
+): Promise<{ success: boolean; error?: string }> {
+  const fs = require("fs/promises")
+  const path = require("path")
+
+  const tmpPath = filePath + ".tmp." + Date.now()
+  const parentDir = path.dirname(filePath)
+
+  try {
+    // Write to temp file
+    const handle = await fs.open(tmpPath, "w")
+    await handle.write(content)
+    await handle.datasync()
+    await handle.close()
+
+    // Rename atomically
+    await fs.rename(tmpPath, filePath)
+
+    // Sync parent directory
+    const parentHandle = await fs.open(parentDir, "r")
+    await parentHandle.sync()
+    await parentHandle.close()
+
+    return { success: true }
+  } catch (e: any) {
+    // Clean up temp file on failure
+    try { await fs.unlink(tmpPath) } catch {}
+    return { success: false, error: e.message }
+  }
 }
