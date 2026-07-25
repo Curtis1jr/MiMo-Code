@@ -17,13 +17,57 @@ export interface ProjectionResult {
   readonly event_count: number
   readonly latest_sequence: number
   readonly generated_at: number
+  readonly conflicts: ConflictRecord[]
 }
+
+export type ConflictType = "semantic_conflict" | "stale_base" | "duplicate"
+export type ConflictResolution = "accept_newer" | "accept_older" | "manual" | "unresolved"
 
 export interface ConflictRecord {
   readonly event_id: string
   readonly identity_key: string
-  readonly conflict_type: "semantic_conflict" | "stale_base" | "duplicate"
+  readonly conflict_type: ConflictType
   readonly details: string
+  readonly existing_sequence: number
+  readonly new_sequence: number
+  readonly resolution: ConflictResolution
+  readonly resolved_at: number | null
+  readonly resolved_by: string | null
+}
+
+// ---------------------------------------------------------------------------
+// Conflict register (in-memory, would be SQLite in production)
+// ---------------------------------------------------------------------------
+const conflictRegister = new Map<string, ConflictRecord>()
+
+export function getConflicts(projectId: string, target: string): ConflictRecord[] {
+  const results: ConflictRecord[] = []
+  for (const [key, conflict] of Array.from(conflictRegister.entries())) {
+    if (key.startsWith(`${projectId}:${target}:`)) {
+      results.push(conflict)
+    }
+  }
+  return results
+}
+
+export function getAllConflicts(): ConflictRecord[] {
+  return Array.from(conflictRegister.values())
+}
+
+// ---------------------------------------------------------------------------
+// Resolution policies
+// ---------------------------------------------------------------------------
+function autoResolvePolicy(
+  conflictType: ConflictType,
+  identityKey: string,
+): ConflictResolution {
+  // High-impact identities require manual resolution
+  const highImpactPatterns = ["architecture", "security", "policy", "authority", "identity"]
+  const isHighImpact = highImpactPatterns.some((p) =>
+    identityKey.toLowerCase().includes(p),
+  )
+  if (isHighImpact) return "manual"
+  return "accept_newer"
 }
 
 // ---------------------------------------------------------------------------
@@ -75,6 +119,7 @@ export function reconcile(input: {
         event_count: 0,
         latest_sequence: 0,
         generated_at: Date.now(),
+        conflicts: [],
       }
     }
 
@@ -113,17 +158,43 @@ export function reconcile(input: {
       const existing = identities.get(event.identity_key)
       if (existing) {
         // Semantic conflict: same identity_key, same upsert operation
-        conflicts.push({
+        const conflictKey = `${project_id}:${target}:${event.identity_key}`
+        const conflictType: ConflictType = "semantic_conflict"
+        const resolution = autoResolvePolicy(conflictType, event.identity_key)
+
+        const conflict: ConflictRecord = {
           event_id: event.event_id,
           identity_key: event.identity_key,
-          conflict_type: "semantic_conflict",
+          conflict_type: conflictType,
           details: `Identity ${event.identity_key} already exists at sequence ${existing.sequence}, new upsert at ${event.project_sequence}`,
-        })
-        log.warn("semantic conflict", {
-          identity_key: event.identity_key,
           existing_sequence: existing.sequence,
           new_sequence: event.project_sequence,
-        })
+          resolution,
+          resolved_at: resolution === "accept_newer" ? Date.now() : null,
+          resolved_by: resolution === "accept_newer" ? "policy" : null,
+        }
+
+        conflictRegister.set(conflictKey, conflict)
+        conflicts.push(conflict)
+
+        // Apply resolution policy
+        if (resolution === "accept_newer") {
+          // Policy: accept newer value
+          identities.set(event.identity_key, { event, sequence: event.project_sequence })
+          log.info("auto-resolved conflict (accept_newer)", {
+            identity_key: event.identity_key,
+            existing_sequence: existing.sequence,
+            new_sequence: event.project_sequence,
+          })
+        } else {
+          // Policy: manual resolution required
+          // PRESERVE THE LAST UNCONTESTED VALUE (the existing one)
+          log.warn("semantic conflict — manual resolution required", {
+            identity_key: event.identity_key,
+            existing_sequence: existing.sequence,
+            new_sequence: event.project_sequence,
+          })
+        }
       } else {
         // New identity
         identities.set(event.identity_key, { event, sequence: event.project_sequence })
@@ -160,6 +231,7 @@ export function reconcile(input: {
       event_count: events.length,
       latest_sequence: latestSequence,
       generated_at: Date.now(),
+      conflicts,
     }
   })
 }

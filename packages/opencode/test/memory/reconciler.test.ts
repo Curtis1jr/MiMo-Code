@@ -9,9 +9,11 @@
 
 import { describe, test, expect, beforeAll, afterAll } from "bun:test"
 import { Effect } from "effect"
+import { randomUUID } from "crypto"
 import path from "path"
 import fs from "fs/promises"
 import { Database } from "../../src/storage"
+import { MemoryEventTable } from "../../src/memory/event.sql"
 import { Service, layer as recorderLayer, type MemoryMutation } from "../../src/memory/recorder"
 import { reconcile, reconcileAll } from "../../src/memory/reconciler"
 
@@ -35,6 +37,32 @@ async function submitEvent(mutation: MemoryMutation): Promise<void> {
       const svc = yield* Service
       yield* svc.submit(mutation)
     }).pipe(Effect.provide(recorderLayer)) as Effect.Effect<void, never, never>,
+  )
+}
+
+/** Insert event directly into ledger, bypassing recorder duplicate detection.
+ *  Used to create conflict scenarios for reconciler testing. */
+function insertDirectly(mutation: MemoryMutation & { project_sequence: number; session_sequence: number }): void {
+  Database.use((db) =>
+    db.insert(MemoryEventTable).values({
+      event_id: randomUUID(),
+      project_id: mutation.project_id,
+      session_id: mutation.session_id,
+      kind: mutation.kind,
+      scope: mutation.scope,
+      target: mutation.target,
+      operation: mutation.operation,
+      identity_key: mutation.identity_key,
+      content: mutation.content,
+      source_turn: mutation.source_turn ?? null,
+      writer: mutation.writer,
+      base_revision: mutation.base_revision ?? null,
+      policy_version: "1",
+      session_sequence: mutation.session_sequence,
+      project_sequence: mutation.project_sequence,
+      timestamp: Date.now(),
+      status: "durable",
+    }).run(),
   )
 }
 
@@ -271,5 +299,141 @@ describe("P3-6: reconcileAll", () => {
     const targets = results.map((r: any) => r.target).sort()
     expect(targets).toContain("MEMORY.md")
     expect(targets).toContain("checkpoint.md")
+  })
+})
+
+// ---------------------------------------------------------------------------
+// P3-7: Conflict register
+// ---------------------------------------------------------------------------
+describe("P3-7: Conflict register", () => {
+  test("semantic conflict is recorded in conflict register", async () => {
+    const projectId = "conflict-register-project"
+
+    // First event via recorder
+    await submitEvent({
+      project_id: projectId,
+      session_id: "ses_cr-1",
+      kind: "memory_upsert",
+      scope: "project",
+      target: "MEMORY.md",
+      operation: "upsert",
+      identity_key: "conflict-rule",
+      content: "# Original version",
+      writer: "checkpoint-writer",
+    })
+
+    // Second event with same identity_key inserted directly (bypasses recorder dedup)
+    insertDirectly({
+      project_id: projectId,
+      session_id: "ses_cr-2",
+      kind: "memory_upsert",
+      scope: "project",
+      target: "MEMORY.md",
+      operation: "upsert",
+      identity_key: "conflict-rule",
+      content: "# Conflicting version",
+      writer: "checkpoint-writer",
+      project_sequence: 2,
+      session_sequence: 1,
+    })
+
+    const result = await Effect.runPromise(
+      reconcile({ project_id: projectId, target: "MEMORY.md" }) as Effect.Effect<any, never, never>,
+    )
+
+    expect(result.conflicts.length).toBeGreaterThan(0)
+    expect(result.conflicts[0].identity_key).toBe("conflict-rule")
+    expect(result.conflicts[0].conflict_type).toBe("semantic_conflict")
+  })
+})
+
+// ---------------------------------------------------------------------------
+// P3-8: Last uncontested value preservation
+// ---------------------------------------------------------------------------
+describe("P3-8: Last uncontested value preservation", () => {
+  test("high-impact conflict preserves last uncontested value", async () => {
+    const projectId = "uncontested-project"
+
+    // Original value
+    await submitEvent({
+      project_id: projectId,
+      session_id: "ses_uc-1",
+      kind: "memory_upsert",
+      scope: "project",
+      target: "MEMORY.md",
+      operation: "upsert",
+      identity_key: "architecture-decision",
+      content: "# Architecture: Use SQLite",
+      writer: "checkpoint-writer",
+    })
+
+    // Conflicting value inserted directly (high-impact: "architecture")
+    insertDirectly({
+      project_id: projectId,
+      session_id: "ses_uc-2",
+      kind: "memory_upsert",
+      scope: "project",
+      target: "MEMORY.md",
+      operation: "upsert",
+      identity_key: "architecture-decision",
+      content: "# Architecture: Use PostgreSQL",
+      writer: "checkpoint-writer",
+      project_sequence: 2,
+      session_sequence: 1,
+    })
+
+    const result = await Effect.runPromise(
+      reconcile({ project_id: projectId, target: "MEMORY.md" }) as Effect.Effect<any, never, never>,
+    )
+
+    // Should preserve the uncontested value (SQLite) because "architecture" is high-impact
+    expect(result.content).toContain("SQLite")
+    expect(result.content).not.toContain("PostgreSQL")
+    expect(result.conflicts.length).toBe(1)
+    expect(result.conflicts[0].resolution).toBe("manual")
+  })
+})
+
+// ---------------------------------------------------------------------------
+// P3-9: Policy-based auto-resolution
+// ---------------------------------------------------------------------------
+describe("P3-9: Policy-based auto-resolution", () => {
+  test("non-high-impact conflict auto-resolves with accept_newer", async () => {
+    const projectId = "auto-resolve-project"
+
+    await submitEvent({
+      project_id: projectId,
+      session_id: "ses_ar-1",
+      kind: "memory_upsert",
+      scope: "project",
+      target: "MEMORY.md",
+      operation: "upsert",
+      identity_key: "routine-update",
+      content: "# Old routine update",
+      writer: "checkpoint-writer",
+    })
+
+    insertDirectly({
+      project_id: projectId,
+      session_id: "ses_ar-2",
+      kind: "memory_upsert",
+      scope: "project",
+      target: "MEMORY.md",
+      operation: "upsert",
+      identity_key: "routine-update",
+      content: "# New routine update",
+      writer: "checkpoint-writer",
+      project_sequence: 2,
+      session_sequence: 1,
+    })
+
+    const result = await Effect.runPromise(
+      reconcile({ project_id: projectId, target: "MEMORY.md" }) as Effect.Effect<any, never, never>,
+    )
+
+    // Should auto-resolve with newer value
+    expect(result.content).toContain("New routine update")
+    expect(result.conflicts.length).toBe(1)
+    expect(result.conflicts[0].resolution).toBe("accept_newer")
   })
 })
