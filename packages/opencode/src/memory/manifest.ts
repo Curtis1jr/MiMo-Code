@@ -102,15 +102,15 @@ function persistManifest(manifest: SessionManifest): void {
 }
 
 /** Load manifest from disk */
-function loadManifest(sessionId: string): SessionManifest | null {
+function loadManifest(sessionId: string): SessionManifest | undefined {
   try {
     const fs = require("fs")
     const filePath = path.join(MANIFEST_DIR, `${sessionId}.json`)
-    if (!fs.existsSync(filePath)) return null
+    if (!fs.existsSync(filePath)) return undefined
     const data = fs.readFileSync(filePath, "utf8")
     return JSON.parse(data)
   } catch {
-    return null
+    return undefined
   }
 }
 
