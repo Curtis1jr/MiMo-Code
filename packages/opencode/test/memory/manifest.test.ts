@@ -462,7 +462,7 @@ describe("P4-8: Manifest persistence", () => {
     expect(manifest!.session_id).toBe(sessionId)
   })
 
-  test("get returns null for unknown session", async () => {
+  test("get returns undefined for unknown session", async () => {
     const manifest = await runWithBoth(
       Effect.gen(function* () {
         const manifestSvc = yield* ManifestService
@@ -470,7 +470,7 @@ describe("P4-8: Manifest persistence", () => {
       }),
     )
 
-    expect(manifest).toBeNull()
+    expect(manifest).toBeUndefined()
   })
 })
 

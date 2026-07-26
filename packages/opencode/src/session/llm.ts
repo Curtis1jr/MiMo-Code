@@ -32,6 +32,7 @@ import * as OtelTracer from "@effect/opentelemetry/Tracer"
 import { ActorRegistry } from "@/actor/registry"
 import { Memory } from "@/memory"
 import { isRetryableTransientError } from "./retry"
+import { evaluateTruth, type EvidenceItem, type SpeakingAuthority } from "../memory/truth-engine"
 
 const log = Log.create({ service: "llm" })
 export const OUTPUT_TOKEN_MAX = ProviderTransform.OUTPUT_TOKEN_MAX
@@ -348,6 +349,100 @@ const live: Layer.Layer<
       return system
     })
 
+    /**
+     * Phase 4A: Evaluate truth-awareness for the current context.
+     * Retrieves evidence from memory and evaluates speaking authority.
+     * Returns a speaking-authority envelope to inject into the system prompt.
+     */
+    const evaluateTruthAwareness = Effect.fn("LLM.evaluateTruthAwareness")(function* (input: {
+      sessionID: string
+      agentName: string
+      userMessage: string
+    }) {
+      // Skip truth-awareness for system-spawned actors
+      if (input.agentName === "checkpoint-writer" || input.agentName === "dream") {
+        return null
+      }
+
+      try {
+        // Extract potential claims from the user's message
+        const { extractClaims } = yield* Effect.promise(() =>
+          import("../memory/truth-engine").then(m => ({ extractClaims: m.extractClaims }))
+        )
+        const claims = extractClaims(input.userMessage)
+
+        // If no claims detected, no need for truth evaluation
+        if (claims.length === 0) {
+          return null
+        }
+
+        // Search memory for relevant evidence
+        const memoryResults = yield* memory.search({
+          query: claims.join(" "),
+          limit: 5,
+        }).pipe(Effect.catchAll(() => Effect.succeed([])))
+
+        // Convert memory results to evidence items
+        const evidence = (memoryResults as any[]).map((r: any, i: number) => ({
+          evidence_id: `memory-${i}`,
+          source_type: "memory",
+          source_id: r.path || "unknown",
+          observed_at: Date.now(),
+          authority: "historical_memory" as const,
+          superseded: false,
+          confidence: 0.8,
+          content_hash: r.snippet?.slice(0, 32) || "",
+          claim_scopes: [],
+        }))
+
+        // Evaluate truth for each claim scope
+        const { evaluateTruth: evaluate } = yield* Effect.promise(() =>
+          import("../memory/truth-engine").then(m => ({ evaluateTruth: m.evaluateTruth }))
+        )
+
+        const evaluations = claims.map(claim => {
+          // Determine claim scope from claim text
+          let scope = "current_phase_status"
+          if (/done|complete|finish/i.test(claim)) scope = "current_phase_status"
+          else if (/deploy|production/i.test(claim)) scope = "build_deployment_state"
+          else if (/commit|branch/i.test(claim)) scope = "commit_branch_identity"
+          else if (/test|pass|fail/i.test(claim)) scope = "test_certification_status"
+
+          return evaluate({
+            claim_scope: scope,
+            evidence,
+            current_time: Date.now(),
+          })
+        })
+
+        // Find the most restrictive authority
+        const authorities = evaluations.map(e => e.authority)
+        const hasUnsupported = authorities.includes("UNSUPPORTED")
+        const hasConflicted = authorities.includes("CONFLICTED")
+        const hasStale = authorities.includes("STALE")
+        const hasRetrieval = authorities.includes("RETRIEVAL_REQUIRED")
+
+        let envelope = ""
+        if (hasUnsupported) {
+          envelope += "\n⚠️ TRUTH-AWARENESS: Some claims in your context lack supporting evidence. You must abstain from project-specific factual assertions without evidence.\n"
+        }
+        if (hasConflicted) {
+          envelope += "\n⚠️ TRUTH-AWARENESS: Conflicting evidence detected. Expose the conflict; do not silently choose.\n"
+        }
+        if (hasStale) {
+          envelope += "\n⚠️ TRUTH-AWARENESS: Some evidence may be stale. Refresh current evidence before making current-state claims.\n"
+        }
+        if (hasRetrieval) {
+          envelope += "\n⚠️ TRUTH-AWARENESS: Evidence retrieval required. Retrieve before generating.\n"
+        }
+
+        return envelope || null
+      } catch {
+        // If truth-engine fails, fail open (allow generation)
+        return null
+      }
+    })
+
     const run = Effect.fn("LLM.run")(function* (input: StreamRequest) {
       const l = log
         .clone()
@@ -385,6 +480,22 @@ const live: Layer.Layer<
           sessionID: input.sessionID,
           agentID: input.agentID,
         }))
+
+      // Phase 4A: Evaluate truth-awareness and inject speaking-authority envelope
+      const lastUserMessage = input.messages.filter(m => m.role === "user").pop()
+      const userText = typeof lastUserMessage?.content === "string"
+        ? lastUserMessage.content
+        : Array.isArray(lastUserMessage?.content)
+          ? lastUserMessage.content.filter((p: any) => p.type === "text").map((p: any) => p.text).join(" ")
+          : ""
+      const truthEnvelope = yield* evaluateTruthAwareness({
+        sessionID: input.sessionID,
+        agentName: input.agent.name,
+        userMessage: userText,
+      }).pipe(Effect.catchAll(() => Effect.succeed(null)))
+      if (truthEnvelope) {
+        system.push(truthEnvelope)
+      }
 
       const variant =
         !input.small && input.model.variants && input.user.model.variant
