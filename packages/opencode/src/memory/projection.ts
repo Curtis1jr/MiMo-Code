@@ -1,4 +1,5 @@
 import { Effect } from "effect"
+import path from "path"
 import { Database } from "../storage"
 import { MemoryEventTable } from "./event.sql"
 import { eq, and, desc } from "drizzle-orm"
@@ -212,4 +213,63 @@ export async function writeProjectionAtomic(
     try { await fs.unlink(tmpPath) } catch {}
     return { success: false, error: e.message }
   }
+}
+
+/**
+ * Materialize all projections for a project to disk.
+ * Called after durable events are persisted.
+ */
+export async function materializeProjections(
+  projectId: string,
+  projectDir: string,
+): Promise<{ targets: string[]; errors: string[] }> {
+  const targets: string[] = []
+  const errors: string[] = []
+
+  try {
+    const projections = await Effect.runPromise(
+      generateAllProjections({ project_id: projectId }) as Effect.Effect<any[], never, never>,
+    )
+
+    for (const projection of projections) {
+      try {
+        // Determine file path based on target
+        let filePath: string
+        if (projection.target === "MEMORY.md") {
+          filePath = path.join(projectDir, "memory", "projects", projectId, "MEMORY.md")
+        } else if (projection.target === "checkpoint.md") {
+          // Checkpoint is session-scoped, skip for project-level materialization
+          continue
+        } else if (projection.target.startsWith("MEMORY-")) {
+          filePath = path.join(projectDir, "memory", "projects", projectId, projection.target)
+        } else {
+          // Unknown target, skip
+          continue
+        }
+
+        // Ensure directory exists
+        const fs = require("fs/promises")
+        await fs.mkdir(path.dirname(filePath), { recursive: true })
+
+        // Write atomically
+        const result = await writeProjectionAtomic(filePath, projection.content)
+        if (result.success) {
+          targets.push(projection.target)
+          log.info("projection materialized", {
+            target: projection.target,
+            high_water_mark: projection.high_water_mark,
+            content_hash: projection.content_hash.slice(0, 16),
+          })
+        } else {
+          errors.push(`${projection.target}: ${result.error}`)
+        }
+      } catch (e: any) {
+        errors.push(`${projection.target}: ${e.message}`)
+      }
+    }
+  } catch (e: any) {
+    errors.push(`materialization failed: ${e.message}`)
+  }
+
+  return { targets, errors }
 }

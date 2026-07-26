@@ -23,12 +23,14 @@ import { Snapshot } from "@/snapshot"
 import { ProjectID } from "../project/schema"
 import { WorkspaceID } from "../control-plane/schema"
 import { SessionID, MessageID, PartID } from "./schema"
+import { sessionWriterLocks } from "../storage/session-locks"
 
 import type { Provider } from "@/provider"
 import { Permission } from "@/permission"
 import { Global } from "@/global"
 import { ActorRegistry } from "@/actor/registry"
 import { Effect, Layer, Option, Context } from "effect"
+import { Service as ManifestService } from "../memory/manifest"
 
 const log = Log.create({ service: "session" })
 
@@ -463,6 +465,15 @@ export const layer: Layer.Layer<Service, never, Bus.Service | Storage.Service | 
       log.info("created", result)
 
       yield* Effect.sync(() => SyncEvent.run(Event.Created, { sessionID: result.id, info: result }))
+
+      // Phase 4.4: Create session manifest at session start
+      yield* Effect.gen(function* () {
+        const manifestSvc = yield* ManifestService
+        yield* manifestSvc.create({
+          project_id: ctx.project.id,
+          session_id: result.id,
+        })
+      }).pipe(Effect.catchAll(() => Effect.unit))
 
       yield* actorReg.register({
         sessionID: result.id,

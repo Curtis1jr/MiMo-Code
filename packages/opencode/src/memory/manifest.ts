@@ -1,5 +1,6 @@
 import { Context, Effect, Layer } from "effect"
 import { createHash } from "crypto"
+import path from "path"
 import { Database } from "../storage"
 import { MemoryEventTable } from "./event.sql"
 import { eq, and, desc } from "drizzle-orm"
@@ -82,6 +83,37 @@ function contentHash(content: string): string {
 // In-memory manifest store (per-session)
 const manifests = new Map<string, SessionManifest>()
 
+// Manifest persistence directory (outside /tmp)
+const MANIFEST_DIR = path.join(
+  process.env.HOME || "/home/user",
+  ".local/share/mimocode/manifests",
+)
+
+/** Persist manifest to disk */
+function persistManifest(manifest: SessionManifest): void {
+  try {
+    const fs = require("fs")
+    fs.mkdirSync(MANIFEST_DIR, { recursive: true })
+    const filePath = path.join(MANIFEST_DIR, `${manifest.session_id}.json`)
+    fs.writeFileSync(filePath, JSON.stringify(manifest, null, 2))
+  } catch (e: any) {
+    log.warn("failed to persist manifest", { session_id: manifest.session_id, error: e.message })
+  }
+}
+
+/** Load manifest from disk */
+function loadManifest(sessionId: string): SessionManifest | null {
+  try {
+    const fs = require("fs")
+    const filePath = path.join(MANIFEST_DIR, `${sessionId}.json`)
+    if (!fs.existsSync(filePath)) return null
+    const data = fs.readFileSync(filePath, "utf8")
+    return JSON.parse(data)
+  } catch {
+    return null
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Layer
 // ---------------------------------------------------------------------------
@@ -145,6 +177,7 @@ export const layer: Layer.Layer<Service, never, never> = Layer.effect(
         }
 
         manifests.set(input.session_id, manifest)
+        persistManifest(manifest)
         log.info("manifest created", {
           manifest_id: manifestId,
           session_id: input.session_id,
@@ -157,7 +190,16 @@ export const layer: Layer.Layer<Service, never, never> = Layer.effect(
 
     /** Get current manifest for a session */
     const get: Interface["get"] = (session_id) =>
-      Effect.sync(() => manifests.get(session_id) ?? null)
+      Effect.sync(() => {
+        let manifest = manifests.get(session_id)
+        if (!manifest) {
+          manifest = loadManifest(session_id)
+          if (manifest) {
+            manifests.set(session_id, manifest)
+          }
+        }
+        return manifest ?? null
+      })
 
     /** Get events since manifest's high-water mark */
     const getPendingEvents: Interface["getPendingEvents"] = (manifest) =>
@@ -236,6 +278,7 @@ export const layer: Layer.Layer<Service, never, never> = Layer.effect(
         }
 
         manifests.set(session_id, refreshed)
+        persistManifest(refreshed)
         log.info("manifest refreshed", {
           session_id,
           old_mark: current.ledger_high_water_mark,
