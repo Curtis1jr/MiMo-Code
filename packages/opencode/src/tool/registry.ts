@@ -30,6 +30,7 @@ import { LspTool } from "./lsp"
 import * as Truncate from "./truncate"
 import { ApplyPatchTool } from "./apply_patch"
 import { ChangeDirectoryTool } from "./change-directory"
+import { MemoryMutationTool } from "./memory-mutation"
 import { Glob } from "@mimo-ai/shared/util/glob"
 import path from "path"
 import { pathToFileURL } from "url"
@@ -139,6 +140,7 @@ export const layer = Layer.effect(
     const memorytool = yield* MemoryTool
     const tasktool = yield* TaskTool
     const workflowtool = yield* WorkflowTool
+    const memorymutationtool = yield* MemoryMutationTool
     const agent = yield* Agent.Service
 
     const state = yield* InstanceState.make<State>(
@@ -224,6 +226,7 @@ export const layer = Layer.effect(
           history: Tool.init(historytool),
           task: Tool.init(tasktool),
           workflow: Tool.init(workflowtool),
+          memoryMutation: Tool.init(memorymutationtool),
         })
 
         return {
@@ -250,6 +253,7 @@ export const layer = Layer.effect(
             tool.history,
             tool.task,
             ...(Flag.MIMOCODE_EXPERIMENTAL_WORKFLOW_TOOL ? [tool.workflow] : []),
+            tool.memoryMutation,
           ],
           actor: tool.actor,
           read: tool.read,

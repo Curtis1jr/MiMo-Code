@@ -275,7 +275,7 @@ function composeWriterPrompt(input: {
 }): string {
   return [
     "<system-reminder>",
-    "You are now operating in checkpoint-writer mode. Ignore the general coding-assistant framing in the system prompt above. The read, write, edit, glob, grep, and task tools are available; do not invoke others.",
+    "You are now operating in checkpoint-writer mode. Ignore the general coding-assistant framing in the system prompt above. The read, write, edit, glob, grep, memory-mutation, and task tools are available; do not invoke others.",
     "",
     "========================================================================",
     "ABSOLUTE PATHS — USE THESE VERBATIM. NEVER COMPUTE, INFER, OR MODIFY.",
@@ -304,7 +304,7 @@ function composeWriterPrompt(input: {
     "",
     input.rangeDesc,
     "",
-    "Use the `task` tool for ALL task state ops (create / start / progress / done / abandon / approve / rename / block / unblock / batch_create). Use the Write tool for the checkpoint, memory, and task narrative files at the CHECKPOINT_PATH / MEMORY_PATH / TASK_MEM_DIR locations declared above. After all writes and tool calls, stop immediately.",
+    "Use the `task` tool for ALL task state ops (create / start / progress / done / abandon / approve / rename / block / unblock / batch_create). Use the `memory-mutation` tool for MEMORY.md and checkpoint.md projections. Use the Write tool ONLY for task narrative files at TASK_MEM_DIR locations. After all writes and tool calls, stop immediately.",
   ].join("\n")
 }
 
