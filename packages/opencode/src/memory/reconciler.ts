@@ -54,6 +54,36 @@ export function getAllConflicts(): ConflictRecord[] {
   return Array.from(conflictRegister.values())
 }
 
+export function getUnresolvedConflicts(): ConflictRecord[] {
+  return Array.from(conflictRegister.values()).filter(
+    (c) => c.resolution === "manual" && !c.resolved_at,
+  )
+}
+
+export function resolveConflict(
+  conflictKey: string,
+  resolution: ConflictResolution,
+  resolvedBy: string,
+): boolean {
+  const conflict = conflictRegister.get(conflictKey)
+  if (!conflict) return false
+
+  conflictRegister.set(conflictKey, {
+    ...conflict,
+    resolution,
+    resolved_at: Date.now(),
+    resolved_by: resolvedBy,
+  })
+
+  log.info("conflict resolved", {
+    conflict_key: conflictKey,
+    resolution,
+    resolved_by: resolvedBy,
+  })
+
+  return true
+}
+
 // ---------------------------------------------------------------------------
 // Resolution policies
 // ---------------------------------------------------------------------------

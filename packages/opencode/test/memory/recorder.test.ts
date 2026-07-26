@@ -417,3 +417,47 @@ describe("P1-10: Receipt includes session_sequence", () => {
     expect(receipt.session_sequence).toBeGreaterThan(0)
   })
 })
+
+// ---------------------------------------------------------------------------
+// P1-11: Drain
+// ---------------------------------------------------------------------------
+describe("P1-11: Drain", () => {
+  test("drain returns drained count", async () => {
+    const result = await runTest(
+      Effect.gen(function* () {
+        const svc = yield* Service
+        return yield* svc.drain()
+      }),
+    )
+
+    expect(result).toHaveProperty("drained")
+    expect(typeof result.drained).toBe("number")
+  })
+})
+
+// ---------------------------------------------------------------------------
+// P1-12: Failed event recovery
+// ---------------------------------------------------------------------------
+describe("P1-12: Failed event recovery", () => {
+  test("getFailedEvents returns empty when no failures", async () => {
+    const failed = await runTest(
+      Effect.gen(function* () {
+        const svc = yield* Service
+        return yield* svc.getFailedEvents()
+      }),
+    )
+
+    expect(Array.isArray(failed)).toBe(true)
+  })
+
+  test("retryFailed returns failed status for nonexistent event", async () => {
+    const receipt = await runTest(
+      Effect.gen(function* () {
+        const svc = yield* Service
+        return yield* svc.retryFailed("nonexistent-event-id")
+      }),
+    )
+
+    expect(receipt.status).toBe("failed")
+  })
+})

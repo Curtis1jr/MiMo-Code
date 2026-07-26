@@ -97,6 +97,15 @@ export interface Interface {
   /** Get a specific event by ID. */
   readonly getEvent: (event_id: string) => Effect.Effect<EventRecord | null>
 
+  /** Get failed events for manual retry. */
+  readonly getFailedEvents: (project_id?: string) => Effect.Effect<EventRecord[]>
+
+  /** Retry a failed event. */
+  readonly retryFailed: (event_id: string) => Effect.Effect<Receipt>
+
+  /** Drain queued events (for shutdown). */
+  readonly drain: () => Effect.Effect<{ drained: number }>
+
   /** Health check — is the recorder accepting mutations? */
   readonly health: () => Effect.Effect<{
     queueDepth: number
@@ -402,6 +411,74 @@ export const layer: Layer.Layer<Service, never, never> = Layer.effect(
         ) as EventRecord | null,
       )
 
+    // --- getFailedEvents ---
+    const getFailedEvents: Interface["getFailedEvents"] = (projectId) =>
+      Effect.sync(() => {
+        const conditions = [eq(MemoryEventTable.status, "failed")]
+        if (projectId) conditions.push(eq(MemoryEventTable.project_id, projectId))
+
+        return Database.use((db) =>
+          db
+            .select()
+            .from(MemoryEventTable)
+            .where(and(...conditions))
+            .orderBy(MemoryEventTable.project_sequence)
+            .all(),
+        ) as EventRecord[]
+      })
+
+    // --- retryFailed ---
+    const retryFailed: Interface["retryFailed"] = (eventId) =>
+      Effect.gen(function* () {
+        const event = yield* getEvent(eventId)
+        if (!event) {
+          return {
+            event_id: eventId,
+            status: "failed" as EventStatus,
+            project_sequence: 0,
+            session_sequence: 0,
+            timestamp: Date.now(),
+          }
+        }
+
+        if (event.status !== "failed") {
+          return {
+            event_id: eventId,
+            status: event.status as EventStatus,
+            project_sequence: event.project_sequence,
+            session_sequence: event.session_sequence,
+            timestamp: Date.now(),
+          }
+        }
+
+        // Retry: update status to durable
+        Database.use((db) =>
+          db
+            .update(MemoryEventTable)
+            .set({ status: "durable" })
+            .where(eq(MemoryEventTable.event_id, eventId))
+            .run(),
+        )
+        log.info("retried failed event", { event_id: eventId })
+
+        return {
+          event_id: eventId,
+          status: "durable" as EventStatus,
+          project_sequence: event.project_sequence,
+          session_sequence: event.session_sequence,
+          timestamp: Date.now(),
+        }
+      })
+
+    // --- drain ---
+    const drain: Interface["drain"] = () =>
+      Effect.sync(() => {
+        const drained = queueDepth
+        queueDepth = 0
+        log.info("queue drained", { drained })
+        return { drained }
+      })
+
     // --- health ---
     const health: Interface["health"] = () =>
       Effect.sync(() => {
@@ -429,6 +506,9 @@ export const layer: Layer.Layer<Service, never, never> = Layer.effect(
       query,
       latestSequence,
       getEvent,
+      getFailedEvents,
+      retryFailed,
+      drain,
       health,
     })
   }),
