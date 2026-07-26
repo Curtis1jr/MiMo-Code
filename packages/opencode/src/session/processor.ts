@@ -578,6 +578,68 @@ export const layer: Layer.Layer<
               ctx.currentText.time = { start: ctx.currentText.time?.start ?? end, end }
             }
             if (value.providerMetadata) ctx.currentText.metadata = value.providerMetadata
+
+            // Phase 4A: Post-generation claim validation — FAIL CLOSED
+            // Runs BEFORE session.updatePart so blocked text never reaches the user.
+            try {
+              const claims = extractClaims(ctx.currentText.text)
+              if (claims.length > 0) {
+                const validations = claims.map(claim => {
+                  let scope = "current_phase_status"
+                  if (/done|complete|finish/i.test(claim)) scope = "current_phase_status"
+                  else if (/deploy|production/i.test(claim)) scope = "build_deployment_state"
+                  else if (/commit|branch/i.test(claim)) scope = "commit_branch_identity"
+                  else if (/test|pass|fail/i.test(claim)) scope = "test_certification_status"
+
+                  return validateClaim({
+                    claim_text: claim,
+                    claim_scope: scope,
+                    evidence: [],
+                  })
+                })
+
+                const blocked = validations.filter(v => v.release_verdict === "block")
+                if (blocked.length > 0) {
+                  const blockedTexts = blocked.map(v => v.claim_text)
+                  const reasons = blocked.map(v => v.reason)
+                  log.warn("post-generation claims blocked — rewriting response", {
+                    claims: blockedTexts,
+                    reasons,
+                  })
+
+                  let rewritten = ctx.currentText.text
+                  for (const b of blocked) {
+                    rewritten = rewritten.replace(
+                      b.claim_text,
+                      `[BLOCKED: ${b.claim_text} — ${b.reason}]`,
+                    )
+                  }
+                  ctx.currentText.text = rewritten
+                  ctx.currentText.metadata = {
+                    ...ctx.currentText.metadata,
+                    truth_validation: {
+                      status: "blocked_claims",
+                      blocked_claims: blockedTexts,
+                      warnings: reasons.join("; "),
+                    },
+                  }
+                }
+              }
+            } catch (validationError) {
+              // FAIL CLOSED: validator failure blocks the response entirely
+              log.error("post-generation validation failed — blocking response", {
+                error: validationError instanceof Error ? validationError.message : String(validationError),
+              })
+              ctx.currentText.text = "[BLOCKED: Post-generation validation failed — response withheld for safety]"
+              ctx.currentText.metadata = {
+                ...ctx.currentText.metadata,
+                truth_validation: {
+                  status: "validator_failure",
+                  error: validationError instanceof Error ? validationError.message : String(validationError),
+                },
+              }
+            }
+
             yield* session.updatePart(ctx.currentText)
             ctx.currentText = undefined
             return
@@ -607,53 +669,8 @@ export const layer: Layer.Layer<
           ctx.snapshot = undefined
         }
 
-        if (ctx.currentText) {
-          const end = Date.now()
-          ctx.currentText.time = { start: ctx.currentText.time?.start ?? end, end }
-
-          // Phase 4A: Post-generation claim validation
-          try {
-            const claims = extractClaims(ctx.currentText.text)
-            if (claims.length > 0) {
-              // Validate each claim (without memory retrieval — that's pre-generation's job)
-              const validations = claims.map(claim => {
-                let scope = "current_phase_status"
-                if (/done|complete|finish/i.test(claim)) scope = "current_phase_status"
-                else if (/deploy|production/i.test(claim)) scope = "build_deployment_state"
-
-                return validateClaim({
-                  claim_text: claim,
-                  claim_scope: scope,
-                  evidence: [], // No evidence = UNSUPPORTED for completion claims
-                })
-              })
-
-              // Check for blocked claims
-              const blocked = validations.filter(v => v.release_verdict === "block")
-              if (blocked.length > 0) {
-                // Add validation warning to the message metadata
-                const warning = blocked.map(v => `${v.claim_text}: ${v.reason}`).join("; ")
-                ctx.currentText.metadata = {
-                  ...ctx.currentText.metadata,
-                  truth_validation: {
-                    status: "blocked_claims",
-                    blocked_claims: blocked.map(v => v.claim_text),
-                    warnings: warning,
-                  },
-                }
-                log.warn("post-generation claims blocked", {
-                  claims: blocked.map(v => v.claim_text),
-                  reasons: blocked.map(v => v.reason),
-                })
-              }
-            }
-          } catch {
-            // Validation failure fails open (don't block the response)
-          }
-
-          yield* session.updatePart(ctx.currentText)
-          ctx.currentText = undefined
-        }
+        // Post-generation validation now runs in text-end handler before session.updatePart.
+        // The dead code that was here has been removed.
 
         for (const part of Object.values(ctx.reasoningMap)) {
           const end = Date.now()

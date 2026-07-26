@@ -334,15 +334,15 @@ export function evaluateTruth(input: {
 // ---------------------------------------------------------------------------
 
 const COMPLETION_PATTERNS = [
-  /\b(DONE|COMPLETE|COMPLETED|FINISHED)\b/i,
-  /\b(DEPLOYED|DEPLOYED|LIVE|PRODUCTION)\b/i,
-  /\b(CERTIFIED|CERTIFICATION)\b/i,
-  /\b(FIXED|RESOLVED|CLOSED)\b/i,
-  /\b(RECOVERED|RECOVERY)\b/i,
-  /\b(MIGRATED|MIGRATION)\b/i,
-  /\b(PRODUCTION-READY|PROD-READY)\b/i,
-  /\b(NO DATA LOSS|ZERO DATA LOSS)\b/i,
-  /\b(ROOT CAUSE|ROOT CAUSE CLOSED)\b/i,
+  /\b(?:is|are|was|been)\s+(DONE|COMPLETE|COMPLETED|FINISHED)\b/i,
+  /\b(?:is|are|was|been)\s+(DEPLOYED|LIVE|IN\s+PRODUCTION)\b/i,
+  /\b(?:is|are|was|been)\s+(CERTIFIED)\b/i,
+  /\b(?:is|are|was|been)\s+(FIXED|RESOLVED|CLOSED)\b/i,
+  /\b(?:is|are|was|been)\s+(RECOVERED)\b/i,
+  /\b(?:is|are|was|been)\s+(MIGRATED)\b/i,
+  /\b(?:is|are|was|been)\s+(PRODUCTION-READY|PROD-READY)\b/i,
+  /\b(NO\s+DATA\s+LOSS|ZERO\s+DATA\s+LOSS)\b/i,
+  /\b(ROOT\s+CAUSE\s+CLOSED)\b/i,
 ]
 
 const STATUS_PATTERNS = [
