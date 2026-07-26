@@ -18,6 +18,7 @@ import { SessionRetry } from "./retry"
 import { SessionStatus } from "./status"
 import { SessionSummary } from "./summary"
 import type { Provider } from "@/provider"
+import { extractClaims, validateClaim, type EvidenceItem } from "../memory/truth-engine"
 import { Question } from "@/question"
 import { errorMessage } from "@/util/error"
 import { Log } from "@/util"
@@ -609,6 +610,47 @@ export const layer: Layer.Layer<
         if (ctx.currentText) {
           const end = Date.now()
           ctx.currentText.time = { start: ctx.currentText.time?.start ?? end, end }
+
+          // Phase 4A: Post-generation claim validation
+          try {
+            const claims = extractClaims(ctx.currentText.text)
+            if (claims.length > 0) {
+              // Validate each claim (without memory retrieval — that's pre-generation's job)
+              const validations = claims.map(claim => {
+                let scope = "current_phase_status"
+                if (/done|complete|finish/i.test(claim)) scope = "current_phase_status"
+                else if (/deploy|production/i.test(claim)) scope = "build_deployment_state"
+
+                return validateClaim({
+                  claim_text: claim,
+                  claim_scope: scope,
+                  evidence: [], // No evidence = UNSUPPORTED for completion claims
+                })
+              })
+
+              // Check for blocked claims
+              const blocked = validations.filter(v => v.release_verdict === "block")
+              if (blocked.length > 0) {
+                // Add validation warning to the message metadata
+                const warning = blocked.map(v => `${v.claim_text}: ${v.reason}`).join("; ")
+                ctx.currentText.metadata = {
+                  ...ctx.currentText.metadata,
+                  truth_validation: {
+                    status: "blocked_claims",
+                    blocked_claims: blocked.map(v => v.claim_text),
+                    warnings: warning,
+                  },
+                }
+                log.warn("post-generation claims blocked", {
+                  claims: blocked.map(v => v.claim_text),
+                  reasons: blocked.map(v => v.reason),
+                })
+              }
+            }
+          } catch {
+            // Validation failure fails open (don't block the response)
+          }
+
           yield* session.updatePart(ctx.currentText)
           ctx.currentText = undefined
         }
