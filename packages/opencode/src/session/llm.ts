@@ -380,7 +380,7 @@ const live: Layer.Layer<
         const memoryResults = yield* memory.search({
           query: claims.join(" "),
           limit: 5,
-        }).pipe(Effect.catchAll(() => Effect.succeed([])))
+        }).pipe(Effect.catch(() => Effect.succeed([])))
 
         // Convert memory results to evidence items
         const evidence = (memoryResults as any[]).map((r: any, i: number) => ({
@@ -492,7 +492,7 @@ const live: Layer.Layer<
         sessionID: input.sessionID,
         agentName: input.agent.name,
         userMessage: userText,
-      }).pipe(Effect.catchAll(() => Effect.succeed(null)))
+      }).pipe(Effect.catch(() => Effect.succeed(null)))
       if (truthEnvelope) {
         system.push(truthEnvelope)
       }
