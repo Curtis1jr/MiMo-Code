@@ -1,5 +1,6 @@
 import { Effect } from "effect"
 import path from "path"
+import { createHash } from "crypto"
 import { Database } from "../storage"
 import { MemoryEventTable } from "./event.sql"
 import { eq, and, desc } from "drizzle-orm"
@@ -102,7 +103,6 @@ export function generateProjection(input: {
     }
 
     const content = lines.join("\n").trim()
-    const { createHash } = require("crypto")
     const contentHash = createHash("sha256").update(content).digest("hex")
 
     return {
@@ -186,8 +186,7 @@ export async function writeProjectionAtomic(
   filePath: string,
   content: string,
 ): Promise<{ success: boolean; error?: string }> {
-  const fs = require("fs/promises")
-  const path = require("path")
+  const fs = await import("fs/promises")
 
   const tmpPath = filePath + ".tmp." + Date.now()
   const parentDir = path.dirname(filePath)
@@ -248,8 +247,8 @@ export async function materializeProjections(
         }
 
         // Ensure directory exists
-        const fs = require("fs/promises")
-        await fs.mkdir(path.dirname(filePath), { recursive: true })
+        const fsPromises = await import("fs/promises")
+        await fsPromises.mkdir(path.dirname(filePath), { recursive: true })
 
         // Write atomically
         const result = await writeProjectionAtomic(filePath, projection.content)

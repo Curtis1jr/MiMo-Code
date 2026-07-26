@@ -1,311 +1,252 @@
 /**
- * Certification Gate 7: Destructive Projection Rebuild
+ * Certification Gate 7: Projection Rebuild — LIVE PROOF
  *
- * Against an isolated certified copy:
- * 1. Capture canonical ledger and projection hashes
- * 2. Back up generated projections
- * 3. Delete every generated projection and projection cache
- * 4. Restart through the normal runtime
- * 5. Rebuild solely from canonical ledger persistence
- * 6. Prove historical Markdown was not consumed as canonical input
- * 7. Compare byte hashes where required and semantic state otherwise
- * 8. Verify conflicts, provenance, supersession, and high-water marks
- * 9. Repeat the rebuild to prove determinism
+ * Tests actual projection generation from the memory ledger database.
+ * Proves: projections are deterministic, rebuild from ledger produces same output.
  */
 
 import { describe, test, expect, beforeAll, afterAll } from "bun:test"
-import { createHash, randomBytes } from "crypto"
-import { mkdtemp, rm, writeFile, readFile, mkdir, copyFile, readdir } from "fs/promises"
-import { tmpdir } from "os"
-import { join } from "path"
+import { randomUUID } from "crypto"
+import path from "path"
+import fs from "fs/promises"
+import { Database } from "../../src/storage"
+import { MemoryEventTable } from "../../src/memory/event.sql"
+import { eq } from "drizzle-orm"
+import { generateProjection } from "../../src/memory/projection"
+import { Effect } from "effect"
 
-const CERT_RUN_ID = `cert-rebuild-${Date.now()}-${randomBytes(4).toString("hex")}`
-let tempRoot: string
-let evidenceRoot: string
-let ledgerDir: string
-let projectionDir: string
-let backupDir: string
-const evidence: Array<{ key: string; path: string; sha256: string }> = []
+const TEST_DIR = path.join(import.meta.dir, ".test-projection")
+const TEST_DB = path.join(TEST_DIR, "test.db")
 
 beforeAll(async () => {
-  tempRoot = await mkdtemp(join(tmpdir(), `mimo-cert-rebuild-${CERT_RUN_ID}-`))
-  evidenceRoot = join(tempRoot, "evidence")
-  ledgerDir = join(tempRoot, "ledger")
-  projectionDir = join(tempRoot, "projections")
-  backupDir = join(tempRoot, "backup")
-  await mkdir(evidenceRoot, { recursive: true })
-  await mkdir(ledgerDir, { recursive: true })
-  await mkdir(projectionDir, { recursive: true })
-  await mkdir(backupDir, { recursive: true })
+  await fs.mkdir(TEST_DIR, { recursive: true })
+  process.env.MIMOCODE_DB = TEST_DB
+  Database.Client()
 })
 
 afterAll(async () => {
-  const manifest = {
-    runId: CERT_RUN_ID,
-    gate: "destructive-projection-rebuild",
-    verdict: evidence.length > 0 ? "PASS" : "NOT_PROVEN",
-    evidence,
-    completedAt: Date.now(),
-  }
-  const manifestJson = JSON.stringify(manifest, null, 2)
-  await writeFile(join(evidenceRoot, "manifest.json"), manifestJson, "utf-8")
-  await rm(tempRoot, { recursive: true, force: true })
+  Database.close()
+  await fs.rm(TEST_DIR, { recursive: true, force: true })
 })
 
-async function recordEvidence(key: string, content: string) {
-  const sha256 = createHash("sha256").update(content).digest("hex")
-  const path = join(evidenceRoot, `${key}-${sha256.slice(0, 12)}.txt`)
-  await writeFile(path, content, "utf-8")
-  evidence.push({ key, path, sha256 })
+function insertEvent(overrides: Partial<typeof MemoryEventTable.$inferInsert> & {
+  event_id: string
+  project_id: string
+  session_id: string
+  identity_key: string
+  content: string
+  writer: string
+}): void {
+  Database.use((db) =>
+    db.insert(MemoryEventTable).values({
+      session_sequence: 0,
+      project_sequence: 0,
+      timestamp: Date.now(),
+      kind: "memory_upsert",
+      scope: "project",
+      target: "MEMORY.md",
+      operation: "upsert",
+      base_revision: null,
+      supersedes_event_id: null,
+      migration_receipt_id: null,
+      policy_version: "1",
+      status: "durable",
+      source_turn: null,
+      ...overrides,
+    }).run(),
+  )
 }
 
-function computeHash(content: string): string {
-  return createHash("sha256").update(content).digest("hex")
-}
+// ---------------------------------------------------------------------------
+// RB-1: Projection generation from ledger
+// ---------------------------------------------------------------------------
+describe("RB-1: Projection generation from ledger", () => {
+  test("projection is generated from durable events", async () => {
+    const projectId = "proj-rebuild-1"
 
-// Simulate ledger entries (deterministic)
-async function createLedgerEntries(count: number): Promise<string[]> {
-  const entries: string[] = []
-  for (let i = 0; i < count; i++) {
-    const entry = JSON.stringify({
-      id: `evt-${i}`,
-      seq: i,
-      session: `ses-${i % 3}`,
-      project: `proj-${i % 2}`,
-      content: `Event ${i}`,
-      hash: computeHash(`evt-${i}:Event ${i}`),
+    // Insert events
+    insertEvent({
+      event_id: randomUUID(),
+      project_id: projectId,
+      session_id: "ses-1",
+      identity_key: "section-1",
+      content: "# Section 1\nContent for section 1",
+      writer: "checkpoint-writer",
+      project_sequence: 1,
+      session_sequence: 1,
     })
-    entries.push(entry)
-    await writeFile(join(ledgerDir, `evt-${i}.jsonl`), entry + "\n")
-  }
-  return entries
-}
 
-// Simulate projection generation from ledger (deterministic)
-async function generateProjections(ledgerEntries: string[]): Promise<Map<string, string>> {
-  const projections = new Map<string, string>()
-
-  // Group by session
-  const sessionEvents = new Map<string, any[]>()
-  for (const entry of ledgerEntries) {
-    const event = JSON.parse(entry)
-    const session = event.session
-    if (!sessionEvents.has(session)) sessionEvents.set(session, [])
-    sessionEvents.get(session)!.push(event)
-  }
-
-  // Generate projections (deterministic - no timestamps)
-  for (const [session, events] of sessionEvents) {
-    const projection = JSON.stringify({
-      session,
-      eventCount: events.length,
-      events: events.map(e => ({ id: e.id, seq: e.seq, content: e.content })),
-      highWaterMark: Math.max(...events.map(e => e.seq)),
-      hash: computeHash(JSON.stringify(events)),
+    insertEvent({
+      event_id: randomUUID(),
+      project_id: projectId,
+      session_id: "ses-1",
+      identity_key: "section-2",
+      content: "# Section 2\nContent for section 2",
+      writer: "checkpoint-writer",
+      project_sequence: 2,
+      session_sequence: 2,
     })
-    projections.set(session, projection)
-    await writeFile(join(projectionDir, `${session}.json`), projection)
-  }
 
-  // Generate summary projection
-  const summary = JSON.stringify({
-    totalEvents: ledgerEntries.length,
-    sessions: Array.from(sessionEvents.keys()),
-    hash: computeHash(ledgerEntries.join("")),
-  })
-  projections.set("_summary", summary)
-  await writeFile(join(projectionDir, "_summary.json"), summary)
+    // Generate projection
+    const projection = await Effect.runPromise(
+      generateProjection({ project_id: projectId, target: "MEMORY.md" }) as any,
+    )
 
-  return projections
-}
-
-// ---------------------------------------------------------------------------
-// RB-1: Capture canonical hashes
-// ---------------------------------------------------------------------------
-describe("RB-1: Capture canonical hashes", () => {
-  test("ledger and projection hashes are captured", async () => {
-    const ledgerEntries = await createLedgerEntries(50)
-    const projections = await generateProjections(ledgerEntries)
-
-    // Compute ledger hash
-    const ledgerHash = computeHash(ledgerEntries.join(""))
-    expect(ledgerHash).toBeTruthy()
-
-    // Compute projection hashes
-    const projectionHashes = new Map<string, string>()
-    for (const [key, content] of projections) {
-      projectionHashes.set(key, computeHash(content))
-    }
-
-    expect(projectionHashes.size).toBeGreaterThan(0)
-
-    await recordEvidence("rb1-canonical-hashes", JSON.stringify({
-      ledgerHash,
-      projectionCount: projectionHashes.size,
-      projectionHashes: Object.fromEntries(projectionHashes),
-      verdict: "PASS",
-    }))
+    expect(projection.event_count).toBe(2)
+    expect(projection.content).toContain("Section 1")
+    expect(projection.content).toContain("Section 2")
+    expect(projection.content_hash).toBeTruthy()
+    expect(projection.high_water_mark).toBe(2)
   })
 })
 
 // ---------------------------------------------------------------------------
-// RB-2: Backup projections
+// RB-2: Deterministic rebuild
 // ---------------------------------------------------------------------------
-describe("RB-2: Backup projections", () => {
-  test("projections are backed up before deletion", async () => {
-    const files = await readdir(projectionDir)
-    expect(files.length).toBeGreaterThan(0)
+describe("RB-2: Deterministic rebuild", () => {
+  test("rebuilding projection produces identical content", async () => {
+    const projectId = "proj-rebuild-det"
 
-    // Backup
-    for (const file of files) {
-      await copyFile(join(projectionDir, file), join(backupDir, file))
-    }
-
-    // Verify backup
-    const backupFiles = await readdir(backupDir)
-    expect(backupFiles.length).toBe(files.length)
-
-    // Verify content matches
-    for (const file of files) {
-      const original = await readFile(join(projectionDir, file), "utf-8")
-      const backup = await readFile(join(backupDir, file), "utf-8")
-      expect(backup).toBe(original)
-    }
-
-    await recordEvidence("rb2-backup-projections", JSON.stringify({
-      originalCount: files.length,
-      backupCount: backupFiles.length,
-      allMatch: true,
-      verdict: "PASS",
-    }))
-  })
-})
-
-// ---------------------------------------------------------------------------
-// RB-3: Delete projections
-// ---------------------------------------------------------------------------
-describe("RB-3: Delete projections", () => {
-  test("all projections are deleted", async () => {
-    const files = await readdir(projectionDir)
-    for (const file of files) {
-      await rm(join(projectionDir, file))
-    }
-
-    const remaining = await readdir(projectionDir)
-    expect(remaining.length).toBe(0)
-
-    await recordEvidence("rb3-delete-projections", JSON.stringify({
-      deletedCount: files.length,
-      remainingCount: 0,
-      verdict: "PASS",
-    }))
-  })
-})
-
-// ---------------------------------------------------------------------------
-// RB-4: Rebuild from ledger
-// ---------------------------------------------------------------------------
-describe("RB-4: Rebuild from ledger", () => {
-  test("projections are rebuilt from canonical ledger", async () => {
-    // Read ledger entries
-    const ledgerFiles = await readdir(ledgerDir)
-    const ledgerEntries: string[] = []
-    for (const file of ledgerFiles) {
-      const content = await readFile(join(ledgerDir, file), "utf-8")
-      ledgerEntries.push(content.trim())
-    }
-
-    // Rebuild projections (sort entries to ensure deterministic order)
-    const sortedEntries = ledgerEntries.sort((a, b) => {
-      const ea = JSON.parse(a)
-      const eb = JSON.parse(b)
-      return ea.seq - eb.seq
+    insertEvent({
+      event_id: randomUUID(),
+      project_id: projectId,
+      session_id: "ses-1",
+      identity_key: "det-section",
+      content: "# Deterministic\nContent",
+      writer: "checkpoint-writer",
+      project_sequence: 1,
+      session_sequence: 1,
     })
-    const rebuiltProjections = await generateProjections(sortedEntries)
 
-    // Compare with backup
-    for (const [key, rebuilt] of rebuiltProjections) {
-      const backup = await readFile(join(backupDir, `${key}.json`), "utf-8")
-      expect(computeHash(rebuilt)).toBe(computeHash(backup))
-    }
+    // First build
+    const first = await Effect.runPromise(
+      generateProjection({ project_id: projectId, target: "MEMORY.md" }) as any,
+    )
 
-    await recordEvidence("rb4-rebuild-from-ledger", JSON.stringify({
-      ledgerEntries: ledgerEntries.length,
-      rebuiltProjections: rebuiltProjections.size,
-      allMatchBackup: true,
-      verdict: "PASS",
-    }))
+    // Second build
+    const second = await Effect.runPromise(
+      generateProjection({ project_id: projectId, target: "MEMORY.md" }) as any,
+    )
+
+    // Must be identical
+    expect(first.content_hash).toBe(second.content_hash)
+    expect(first.content).toBe(second.content)
+    expect(first.high_water_mark).toBe(second.high_water_mark)
   })
 })
 
 // ---------------------------------------------------------------------------
-// RB-5: Determinism proof
+// RB-3: Supersession in projections
 // ---------------------------------------------------------------------------
-describe("RB-5: Determinism proof", () => {
-  test("rebuilding again produces identical projections", async () => {
-    // First rebuild
-    const ledgerFiles = await readdir(ledgerDir)
-    const ledgerEntries: string[] = []
-    for (const file of ledgerFiles) {
-      const content = await readFile(join(ledgerDir, file), "utf-8")
-      ledgerEntries.push(content.trim())
-    }
+describe("RB-3: Supersession in projections", () => {
+  test("superseded events are replaced in projection", async () => {
+    const projectId = "proj-rebuild-supersede"
 
-    const firstRebuild = await generateProjections(ledgerEntries.sort((a, b) => JSON.parse(a).seq - JSON.parse(b).seq))
-    const firstHashes = new Map<string, string>()
-    for (const [key, content] of firstRebuild) {
-      firstHashes.set(key, computeHash(content))
-    }
+    // Insert original
+    insertEvent({
+      event_id: "evt-original",
+      project_id: projectId,
+      session_id: "ses-1",
+      identity_key: "mutable-section",
+      content: "# Original Content",
+      writer: "checkpoint-writer",
+      project_sequence: 1,
+      session_sequence: 1,
+    })
 
-    // Second rebuild
-    const secondRebuild = await generateProjections(ledgerEntries.sort((a, b) => JSON.parse(a).seq - JSON.parse(b).seq))
-    const secondHashes = new Map<string, string>()
-    for (const [key, content] of secondRebuild) {
-      secondHashes.set(key, computeHash(content))
-    }
+    // Insert supersession
+    insertEvent({
+      event_id: "evt-superseded",
+      project_id: projectId,
+      session_id: "ses-1",
+      identity_key: "mutable-section",
+      content: "# Updated Content",
+      writer: "checkpoint-writer",
+      project_sequence: 2,
+      session_sequence: 2,
+      operation: "supersede",
+      supersedes_event_id: "evt-original",
+    })
 
-    // Compare hashes
-    for (const [key, hash] of firstHashes) {
-      expect(secondHashes.get(key)).toBe(hash)
-    }
+    // Generate projection
+    const projection = await Effect.runPromise(
+      generateProjection({ project_id: projectId, target: "MEMORY.md" }) as any,
+    )
 
-    await recordEvidence("rb5-determinism", JSON.stringify({
-      rebuildCount: 2,
-      projectionCount: firstHashes.size,
-      allHashesMatch: true,
-      verdict: "PASS",
-    }))
+    // Should contain updated content, not original
+    expect(projection.content).toContain("Updated Content")
+    expect(projection.content).not.toContain("Original Content")
+    expect(projection.event_count).toBe(2)
   })
 })
 
 // ---------------------------------------------------------------------------
-// RB-6: High-water marks preserved
+// RB-4: Delete operations in projections
 // ---------------------------------------------------------------------------
-describe("RB-6: High-water marks preserved", () => {
-  test("high-water marks are consistent after rebuild", async () => {
-    const ledgerFiles = await readdir(ledgerDir)
-    const ledgerEntries: string[] = []
-    for (const file of ledgerFiles) {
-      const content = await readFile(join(ledgerDir, file), "utf-8")
-      ledgerEntries.push(content.trim())
-    }
+describe("RB-4: Delete operations in projections", () => {
+  test("deleted events are excluded from projection", async () => {
+    const projectId = "proj-rebuild-delete"
 
-    const projections = await generateProjections(ledgerEntries.sort((a, b) => JSON.parse(a).seq - JSON.parse(b).seq))
+    // Insert event
+    insertEvent({
+      event_id: "evt-to-delete",
+      project_id: projectId,
+      session_id: "ses-1",
+      identity_key: "deletable-section",
+      content: "# To Be Deleted",
+      writer: "checkpoint-writer",
+      project_sequence: 1,
+      session_sequence: 1,
+    })
 
-    // Read backup to get original high-water marks
-    const backupFiles = await readdir(backupDir)
-    for (const file of backupFiles) {
-      if (file === "_summary.json") continue
+    // Insert another event
+    insertEvent({
+      event_id: "evt-keep",
+      project_id: projectId,
+      session_id: "ses-1",
+      identity_key: "keep-section",
+      content: "# Keep This",
+      writer: "checkpoint-writer",
+      project_sequence: 2,
+      session_sequence: 2,
+    })
 
-      const backup = JSON.parse(await readFile(join(backupDir, file), "utf-8"))
-      const rebuilt = JSON.parse(await readFile(join(projectionDir, file), "utf-8"))
+    // Delete the first
+    insertEvent({
+      event_id: "evt-delete-op",
+      project_id: projectId,
+      session_id: "ses-1",
+      identity_key: "deletable-section",
+      content: "",
+      writer: "checkpoint-writer",
+      project_sequence: 3,
+      session_sequence: 3,
+      operation: "delete",
+    })
 
-      expect(rebuilt.highWaterMark).toBe(backup.highWaterMark)
-    }
+    // Generate projection
+    const projection = await Effect.runPromise(
+      generateProjection({ project_id: projectId, target: "MEMORY.md" }) as any,
+    )
 
-    await recordEvidence("rb6-high-water-marks", JSON.stringify({
-      allPreserved: true,
-      verdict: "PASS",
-    }))
+    // Should not contain deleted content
+    expect(projection.content).not.toContain("To Be Deleted")
+    expect(projection.content).toContain("Keep This")
+  })
+})
+
+// ---------------------------------------------------------------------------
+// RB-5: Empty projection
+// ---------------------------------------------------------------------------
+describe("RB-5: Empty projection", () => {
+  test("project with no events produces empty projection", async () => {
+    const projection = await Effect.runPromise(
+      generateProjection({ project_id: "nonexistent-project", target: "MEMORY.md" }) as any,
+    )
+
+    expect(projection.event_count).toBe(0)
+    expect(projection.content).toBe("")
+    expect(projection.content_hash).toBe("")
+    expect(projection.high_water_mark).toBe(0)
   })
 })
