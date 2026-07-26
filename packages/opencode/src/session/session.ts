@@ -467,13 +467,25 @@ export const layer: Layer.Layer<Service, never, Bus.Service | Storage.Service | 
       yield* Effect.sync(() => SyncEvent.run(Event.Created, { sessionID: result.id, info: result }))
 
       // Phase 4.4: Create session manifest at session start
-      yield* Effect.gen(function* () {
-        const manifestSvc = yield* ManifestService
-        yield* manifestSvc.create({
-          project_id: ctx.project.id,
-          session_id: result.id,
-        })
-      }).pipe(Effect.catchAll(() => Effect.unit))
+      // Use Effect.tryPromise to avoid type issues with Effect.gen
+      yield* Effect.tryPromise({
+        try: async () => {
+          try {
+            const manifestSvc = await Effect.runPromise(
+              Effect.gen(function* () {
+                return yield* ManifestService
+              }).pipe(Effect.provide(ManifestService.layer)) as Effect.Effect<any, never, never>,
+            )
+            await Effect.runPromise(manifestSvc.create({
+              project_id: ctx.project.id,
+              session_id: result.id,
+            }))
+          } catch {
+            // Ignore manifest creation errors
+          }
+        },
+        catch: () => undefined,
+      })
 
       yield* actorReg.register({
         sessionID: result.id,

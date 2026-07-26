@@ -2,7 +2,6 @@ import { Effect } from "effect"
 import z from "zod"
 import { Service as RecorderService } from "../memory/recorder"
 import { materializeProjections } from "../memory/projection"
-import { Service as ManifestService } from "../memory/manifest"
 import * as Tool from "./tool"
 
 const parameters = z.object({
@@ -17,13 +16,13 @@ const parameters = z.object({
 export const MemoryMutationTool = Tool.define(
   "memory-mutation",
   Effect.gen(function* () {
+    const recorder = yield* RecorderService
+
     return {
       description: "Submit a typed memory mutation to the recorder. Use this instead of Write/Edit for MEMORY.md and checkpoint.md projections.",
       parameters,
       execute: (args: z.infer<typeof parameters>, ctx: Tool.Context) =>
         Effect.gen(function* () {
-          const recorder = yield* RecorderService
-
           // Submit mutation to recorder
           const receipt = yield* recorder.submit({
             project_id: args.project_id,

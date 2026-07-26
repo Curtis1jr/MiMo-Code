@@ -55,13 +55,13 @@ export interface Interface {
   }) => Effect.Effect<SessionManifest>
 
   /** Get the current manifest for a session. */
-  readonly get: (session_id: string) => Effect.Effect<SessionManifest | null>
+  readonly get: (session_id: string) => Effect.Effect<SessionManifest | undefined>
 
   /** Get events since manifest's high-water mark (pending overlay). */
   readonly getPendingEvents: (manifest: SessionManifest) => Effect.Effect<EventRecord[]>
 
   /** Get full snapshot: manifest + pending events. */
-  readonly getSnapshot: (session_id: string) => Effect.Effect<ManifestSnapshot | null>
+  readonly getSnapshot: (session_id: string) => Effect.Effect<ManifestSnapshot | undefined>
 
   /** Refresh manifest: advance high-water mark, update projection hash. */
   readonly refresh: (session_id: string) => Effect.Effect<SessionManifest>
@@ -198,7 +198,7 @@ export const layer: Layer.Layer<Service, never, never> = Layer.effect(
             manifests.set(session_id, manifest)
           }
         }
-        return manifest ?? null
+        return manifest ?? undefined
       })
 
     /** Get events since manifest's high-water mark */
@@ -223,7 +223,7 @@ export const layer: Layer.Layer<Service, never, never> = Layer.effect(
     const getSnapshot: Interface["getSnapshot"] = (session_id) =>
       Effect.gen(function* () {
         const manifest = yield* get(session_id)
-        if (!manifest) return null
+        if (!manifest) return undefined
 
         const pending = yield* getPendingEvents(manifest)
         return {
